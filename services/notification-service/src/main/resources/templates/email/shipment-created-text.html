@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<!-- Plain-text fallback for shipment-created email -->
+<body th:inline="text">
+SmartFreight — Shipment Created Successfully
+============================================
+
+Hello, [(${shipperName})],
+
+Your shipment has been created successfully.
+
+Reference Number: [(${referenceNumber})]
+From: [(${originCity})]
+To: [(${destinationCity})]
+Carrier: [(${carrierName})]
+Weight: [(${weightLbs})] lbs
+
+Track your shipment: [(${trackingUrl})]
+
+---
+SmartFreight, Inc.
+This is an automated notification.
+</body>
+</html>

@@ -1,0 +1,64 @@
+spring:
+  application:
+    name: invoice-service
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/invoice_db}
+    username: ${DATABASE_USERNAME:invoice_svc}
+    password: ${DATABASE_PASSWORD:localpassword}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      pool-name: InvoiceServicePool
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI:https://cognito-idp.us-east-1.amazonaws.com/local}
+  # Spring Batch — disable auto-creating job metadata tables (we manage with Flyway)
+  batch:
+    jdbc:
+      initialize-schema: never
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:#{null}}
+  sns:
+    invoice-events-topic-arn: ${INVOICE_EVENTS_TOPIC_ARN:arn:aws:sns:us-east-1:000000000000:invoice-events}
+  sqs:
+    invoice-processing-queue-url: ${INVOICE_PROCESSING_QUEUE_URL:http://localhost:4566/000000000000/invoice-processing-queue}
+  s3:
+    documents-bucket-name: ${DOCUMENTS_BUCKET:smartfreight-documents-dev}
+
+# 3-way match tolerances
+invoice:
+  match:
+    dollar-tolerance: "5.00"
+    percentage-tolerance: 2.0
+  payment:
+    default-terms-days: 30
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  cloudwatch:
+    metrics:
+      export:
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:false}
+
+logging:
+  level:
+    root: INFO
+    com.smartfreight: DEBUG

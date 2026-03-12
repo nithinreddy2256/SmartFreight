@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  SmartFreight — Shipment In Transit Email Template
+  Trigger: ShipmentStatusChangedEvent (IN_TRANSIT)
+  Recipients: Shipper + Consignee
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Shipment is In Transit</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333; }
+        .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+        .header { background: linear-gradient(135deg, #1a3a5c 0%, #2563eb 100%); padding: 32px 40px; text-align: center; }
+        .header .logo { color: #ffffff; font-size: 28px; font-weight: 700; }
+        .header .logo span { color: #60a5fa; }
+        .transit-banner { background: #2563eb; color: white; text-align: center; padding: 20px; }
+        .transit-banner h2 { font-size: 20px; font-weight: 700; }
+        .transit-banner .location { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+        .body { padding: 40px; }
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
+        .info-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-bottom: 16px; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 13px; color: #64748b; font-weight: 500; }
+        .info-value { font-size: 14px; color: #1e293b; font-weight: 600; text-align: right; }
+        .cta-container { text-align: center; margin: 28px 0; }
+        .cta-button { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-size: 15px; font-weight: 600; }
+        .footer { background: #f1f5f9; padding: 24px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer p { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="header">
+            <div class="logo">Smart<span>Freight</span></div>
+        </div>
+
+        <div class="transit-banner">
+            <h2>&#128690; Your Shipment is In Transit</h2>
+            <div class="location" th:if="${location != null}" th:text="'Current location: ' + ${location}">Current location: Dallas, TX</div>
+        </div>
+
+        <div class="body">
+            <div class="info-card">
+                <h3>Shipment Status</h3>
+                <div class="info-row">
+                    <span class="info-label">Reference Number</span>
+                    <span class="info-value" th:text="${referenceNumber}">SF-20240310-000042</span>
+                </div>
+                <div class="info-row" th:if="${location != null}">
+                    <span class="info-label">Last Known Location</span>
+                    <span class="info-value" th:text="${location}">Dallas, TX Distribution Center</span>
+                </div>
+                <div class="info-row" th:if="${statusReason != null}">
+                    <span class="info-label">Status Update</span>
+                    <span class="info-value" th:text="${statusReason}">Departed facility</span>
+                </div>
+            </div>
+
+            <div class="cta-container">
+                <a th:href="${trackingUrl}" class="cta-button">Track Live Updates</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 SmartFreight, Inc. All rights reserved.</p>
+            <p>This is an automated shipment status notification.</p>
+        </div>
+    </div>
+</body>
+</html>

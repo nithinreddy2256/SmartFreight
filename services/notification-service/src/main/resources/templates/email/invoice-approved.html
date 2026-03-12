@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  SmartFreight — Invoice Approved Email Template
+  Trigger: InvoiceApprovedEvent
+  Recipients: AP Team
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Approved for Payment</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333; }
+        .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+        .header { background: linear-gradient(135deg, #1a3a5c 0%, #2563eb 100%); padding: 32px 40px; text-align: center; }
+        .header .logo { color: #ffffff; font-size: 28px; font-weight: 700; }
+        .header .logo span { color: #60a5fa; }
+        .approved-banner { background: #16a34a; color: white; text-align: center; padding: 20px; }
+        .approved-banner h2 { font-size: 20px; font-weight: 700; }
+        .auto-badge { display: inline-block; background: rgba(255,255,255,0.25); border-radius: 20px; padding: 3px 12px; font-size: 12px; margin-top: 6px; }
+        .body { padding: 40px; }
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
+        .info-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-bottom: 16px; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 13px; color: #64748b; font-weight: 500; }
+        .info-value { font-size: 14px; color: #1e293b; font-weight: 600; text-align: right; }
+        .amount-value { font-size: 20px !important; color: #16a34a !important; }
+        .cta-container { text-align: center; margin: 28px 0; }
+        .cta-button { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-size: 15px; font-weight: 600; }
+        .footer { background: #f1f5f9; padding: 24px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer p { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="header">
+            <div class="logo">Smart<span>Freight</span></div>
+        </div>
+
+        <div class="approved-banner">
+            <h2>&#10003; Invoice Approved for Payment</h2>
+            <span class="auto-badge" th:if="${autoApproved}">Auto-Approved (3-way match passed)</span>
+            <span class="auto-badge" th:unless="${autoApproved}">Manually Reviewed &amp; Approved</span>
+        </div>
+
+        <div class="body">
+            <div class="info-card">
+                <h3>Invoice Details</h3>
+                <div class="info-row">
+                    <span class="info-label">Invoice Number</span>
+                    <span class="info-value" th:text="${invoiceNumber}">INV-8821</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Carrier</span>
+                    <span class="info-value" th:text="${carrierName}">UPS Freight</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Shipment Reference</span>
+                    <span class="info-value" th:text="${shipmentReferenceNumber}">SF-20240310-000042</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">GL Code</span>
+                    <span class="info-value" th:text="${glCode}">5410-FREIGHT</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>Payment Details</h3>
+                <div class="info-row">
+                    <span class="info-label">Approved Amount</span>
+                    <span class="info-value amount-value" th:text="'$' + ${#numbers.formatDecimal(approvedAmount, 1, 2)} + ' ' + ${currency}">$1,890.00 USD</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Payment Due Date</span>
+                    <span class="info-value" th:text="${#temporals.format(paymentDueDate, 'MMM d, yyyy')}">Apr 9, 2024</span>
+                </div>
+            </div>
+
+            <div class="cta-container">
+                <a th:href="${invoiceUrl}" class="cta-button">View Invoice Details</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 SmartFreight, Inc. All rights reserved.</p>
+            <p>Invoice ID: <span th:text="${invoiceId}">inv-abc-123</span></p>
+        </div>
+    </div>
+</body>
+</html>

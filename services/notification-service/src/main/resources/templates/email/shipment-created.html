@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  SmartFreight — Shipment Created Email Template
+  Trigger: ShipmentCreatedEvent
+  Recipients: Shipper contact
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Shipment Created</title>
+    <style>
+        /* ─── Reset ─────────────────────────────────────────────────────── */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333; }
+        /* ─── Layout ────────────────────────────────────────────────────── */
+        .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+        /* ─── Header ────────────────────────────────────────────────────── */
+        .header { background: linear-gradient(135deg, #1a3a5c 0%, #2563eb 100%); padding: 32px 40px; text-align: center; }
+        .header .logo { color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+        .header .logo span { color: #60a5fa; }
+        .header .tagline { color: #93c5fd; font-size: 13px; margin-top: 4px; }
+        /* ─── Status Badge ──────────────────────────────────────────────── */
+        .status-banner { background: #22c55e; color: white; text-align: center; padding: 16px; font-size: 16px; font-weight: 600; }
+        .status-banner .status-icon { font-size: 24px; display: block; margin-bottom: 4px; }
+        /* ─── Body ──────────────────────────────────────────────────────── */
+        .body { padding: 40px; }
+        .greeting { font-size: 18px; font-weight: 600; margin-bottom: 12px; }
+        .intro { font-size: 15px; color: #4b5563; line-height: 1.6; margin-bottom: 28px; }
+        /* ─── Info Card ─────────────────────────────────────────────────── */
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin-bottom: 28px; }
+        .info-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-bottom: 16px; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 13px; color: #64748b; font-weight: 500; }
+        .info-value { font-size: 14px; color: #1e293b; font-weight: 600; text-align: right; }
+        /* ─── Route Display ─────────────────────────────────────────────── */
+        .route { display: flex; align-items: center; justify-content: center; gap: 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 20px; margin-bottom: 28px; }
+        .route-city { text-align: center; flex: 1; }
+        .route-city .city { font-size: 18px; font-weight: 700; color: #1e3a5f; }
+        .route-city .state { font-size: 12px; color: #64748b; }
+        .route-arrow { color: #2563eb; font-size: 24px; }
+        /* ─── CTA Button ────────────────────────────────────────────────── */
+        .cta-container { text-align: center; margin: 28px 0; }
+        .cta-button { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-size: 15px; font-weight: 600; }
+        /* ─── Footer ────────────────────────────────────────────────────── */
+        .footer { background: #f1f5f9; padding: 24px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer p { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <!-- Header with SmartFreight branding -->
+        <div class="header">
+            <div class="logo">Smart<span>Freight</span></div>
+            <div class="tagline">Intelligent Logistics Management</div>
+        </div>
+
+        <!-- Status banner -->
+        <div class="status-banner">
+            <span class="status-icon">&#10003;</span>
+            Shipment Created Successfully
+        </div>
+
+        <!-- Body -->
+        <div class="body">
+            <div class="greeting">Hello, <span th:text="${shipperName}">Acme Corporation</span></div>
+            <div class="intro">
+                Your shipment has been created and is ready for carrier assignment.
+                Your reference number is <strong th:text="${referenceNumber}">SF-20240310-000042</strong>.
+            </div>
+
+            <!-- Route visualization -->
+            <div class="route">
+                <div class="route-city">
+                    <div class="city" th:text="${originCity}">Dallas</div>
+                    <div class="state">Origin</div>
+                </div>
+                <div class="route-arrow">&#8594;</div>
+                <div class="route-city">
+                    <div class="city" th:text="${destinationCity}">Los Angeles</div>
+                    <div class="state">Destination</div>
+                </div>
+            </div>
+
+            <!-- Shipment details card -->
+            <div class="info-card">
+                <h3>Shipment Details</h3>
+
+                <div class="info-row">
+                    <span class="info-label">Reference Number</span>
+                    <span class="info-value" th:text="${referenceNumber}">SF-20240310-000042</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Carrier</span>
+                    <span class="info-value" th:text="${carrierName}">Pending Assignment</span>
+                </div>
+                <div class="info-row" th:if="${estimatedDelivery != null}">
+                    <span class="info-label">Estimated Delivery</span>
+                    <span class="info-value" th:text="${#temporals.format(estimatedDelivery, 'MMM d, yyyy')}">Mar 15, 2024</span>
+                </div>
+                <div class="info-row" th:if="${weightLbs != null}">
+                    <span class="info-label">Weight</span>
+                    <span class="info-value" th:text="${#numbers.formatDecimal(weightLbs, 1, 1)} + ' lbs'">450.0 lbs</span>
+                </div>
+            </div>
+
+            <!-- CTA button -->
+            <div class="cta-container">
+                <a th:href="${trackingUrl}" class="cta-button">Track Your Shipment</a>
+            </div>
+
+            <p style="font-size: 14px; color: #64748b; line-height: 1.6;">
+                You'll receive another email once a carrier has been assigned and the shipment is picked up.
+                If you have questions, please contact your SmartFreight account manager.
+            </p>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>&copy; 2024 SmartFreight, Inc. All rights reserved.</p>
+            <p>This is an automated notification. Please do not reply to this email.</p>
+            <p>Reference: <span th:text="${shipmentId}">ship-abc-123</span></p>
+        </div>
+    </div>
+</body>
+</html>

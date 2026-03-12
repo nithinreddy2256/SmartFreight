@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<!--
+  SmartFreight — Invoice Disputed Email Template
+  Trigger: InvoiceDisputedEvent
+  Recipients: AP Team + Carrier Relations Team
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice Disputed — Action Required</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f9; color: #333; }
+        .email-wrapper { max-width: 600px; margin: 0 auto; background: #ffffff; }
+        .header { background: linear-gradient(135deg, #1a3a5c 0%, #2563eb 100%); padding: 32px 40px; text-align: center; }
+        .header .logo { color: #ffffff; font-size: 28px; font-weight: 700; }
+        .header .logo span { color: #60a5fa; }
+        .alert-banner { background: #dc2626; color: white; text-align: center; padding: 20px; }
+        .alert-banner .alert-icon { font-size: 32px; display: block; margin-bottom: 8px; }
+        .alert-banner h2 { font-size: 20px; font-weight: 700; }
+        .alert-banner .subtitle { font-size: 13px; opacity: 0.9; margin-top: 4px; }
+        .body { padding: 40px; }
+        .action-required { background: #fef2f2; border: 2px solid #fecaca; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; font-size: 14px; color: #991b1b; font-weight: 600; }
+        .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 24px; margin-bottom: 20px; }
+        .info-card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.8px; color: #64748b; margin-bottom: 16px; }
+        .info-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-size: 13px; color: #64748b; font-weight: 500; }
+        .info-value { font-size: 14px; color: #1e293b; font-weight: 600; text-align: right; }
+        .discrepancy-amount { color: #dc2626 !important; font-size: 16px !important; }
+        .cta-container { text-align: center; margin: 28px 0; }
+        .cta-button { display: inline-block; background: #dc2626; color: #ffffff !important; text-decoration: none; padding: 14px 36px; border-radius: 6px; font-size: 15px; font-weight: 600; }
+        .footer { background: #f1f5f9; padding: 24px 40px; text-align: center; border-top: 1px solid #e2e8f0; }
+        .footer p { font-size: 12px; color: #94a3b8; line-height: 1.6; }
+    </style>
+</head>
+<body>
+    <div class="email-wrapper">
+        <div class="header">
+            <div class="logo">Smart<span>Freight</span></div>
+        </div>
+
+        <div class="alert-banner">
+            <span class="alert-icon">&#9888;</span>
+            <h2>Invoice Dispute Detected</h2>
+            <div class="subtitle" th:text="'Reason: ' + ${disputeReason}">Reason: OVERCHARGE</div>
+        </div>
+
+        <div class="body">
+            <div class="action-required">
+                &#128276; Action Required — Please review this invoice discrepancy within 5 business days.
+            </div>
+
+            <div class="info-card">
+                <h3>Invoice Information</h3>
+                <div class="info-row">
+                    <span class="info-label">Invoice Number</span>
+                    <span class="info-value" th:text="${invoiceNumber}">INV-9921</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Carrier</span>
+                    <span class="info-value" th:text="${carrierName}">FedEx Freight</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Shipment Reference</span>
+                    <span class="info-value" th:text="${shipmentReferenceNumber}">SF-20240310-000042</span>
+                </div>
+            </div>
+
+            <div class="info-card">
+                <h3>Discrepancy Details</h3>
+                <div class="info-row">
+                    <span class="info-label">Invoiced Amount</span>
+                    <span class="info-value" th:text="'$' + ${#numbers.formatDecimal(invoicedAmount, 1, 2)}">$2,450.00</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Expected Amount</span>
+                    <span class="info-value" th:text="'$' + ${#numbers.formatDecimal(expectedAmount, 1, 2)}">$2,100.00</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Discrepancy</span>
+                    <span class="info-value discrepancy-amount" th:text="'$' + ${#numbers.formatDecimal(discrepancyAmount, 1, 2)} + ' (' + ${#numbers.formatDecimal(discrepancyPercentage, 1, 1)} + '%)'">$350.00 (16.7%)</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Dispute Reason</span>
+                    <span class="info-value" th:text="${disputeDescription}">Carrier billed at spot rate instead of contracted rate</span>
+                </div>
+            </div>
+
+            <div class="cta-container">
+                <a th:href="${invoiceUrl}" class="cta-button">Review Invoice &amp; Resolve Dispute</a>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; 2024 SmartFreight, Inc. All rights reserved.</p>
+            <p>This is an automated invoice dispute notification.</p>
+            <p>Invoice ID: <span th:text="${invoiceId}">inv-abc-123</span></p>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,114 @@
+version: "3.9"
+
+# ============================================================================
+# SmartFreight Local Development Environment
+# ============================================================================
+# Starts all infrastructure dependencies locally:
+#   - PostgreSQL 15   → Aurora PostgreSQL replacement (shipment-db + invoice-db)
+#   - LocalStack 3.x  → AWS services mock (S3, SQS, SNS, DynamoDB, SES, Secrets Manager)
+#
+# Usage:
+#   docker-compose up -d          # Start all services
+#   docker-compose down           # Stop all services
+#   docker-compose logs -f        # Follow logs
+#
+# After starting: run seed-localstack.sh to create AWS resources
+#
+# Services are accessible at:
+#   PostgreSQL:  localhost:5432
+#   LocalStack:  localhost:4566  (all AWS APIs)
+#   LocalStack UI: http://localhost:8080
+# ============================================================================
+
+services:
+
+  # ─── PostgreSQL 15 ───────────────────────────────────────────────────────────
+  # Replaces Aurora PostgreSQL for local development.
+  # Hosts both shipment-db and invoice-db as separate databases.
+  postgres:
+    image: postgres:15-alpine
+    container_name: smartfreight-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: smartfreight
+      POSTGRES_PASSWORD: localpassword
+      POSTGRES_DB: postgres
+      # Create both application databases on startup
+      POSTGRES_MULTIPLE_DATABASES: shipment_db,invoice_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-scripts/create-databases.sql:/docker-entrypoint-initdb.d/01-create-databases.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartfreight"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - smartfreight-local
+
+  # ─── LocalStack ──────────────────────────────────────────────────────────────
+  # Mocks AWS services locally. All microservices point to localhost:4566.
+  # Services enabled: S3, SQS, SNS, DynamoDB, SES, Secrets Manager, Lambda, IAM
+  localstack:
+    image: localstack/localstack:3.2.0
+    container_name: smartfreight-localstack
+    restart: unless-stopped
+    ports:
+      - "4566:4566"       # Main LocalStack port (all services)
+      - "8080:8080"       # LocalStack Web UI
+    environment:
+      # Services to start (others are lazy-loaded on first request)
+      SERVICES: s3,sqs,sns,dynamodb,ses,secretsmanager,iam,cloudwatch
+      DEBUG: 0
+      DATA_DIR: /var/lib/localstack/data
+      DOCKER_HOST: unix:///var/run/docker.sock
+      # Persist state between restarts (useful for development)
+      PERSISTENCE: 1
+      # Enable LocalStack Web UI
+      LOCALSTACK_GATEWAY_LISTEN: 0.0.0.0:4566
+    volumes:
+      - localstack-data:/var/lib/localstack/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - smartfreight-local
+
+  # ─── LocalStack Init ─────────────────────────────────────────────────────────
+  # Runs once after LocalStack is healthy to create all required AWS resources.
+  # This replaces running seed-localstack.sh manually.
+  localstack-init:
+    image: amazon/aws-cli:2.15.17
+    container_name: smartfreight-localstack-init
+    depends_on:
+      localstack:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://localstack:4566
+    volumes:
+      - ./seed-localstack.sh:/seed-localstack.sh
+    command: ["bash", "/seed-localstack.sh"]
+    networks:
+      - smartfreight-local
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
+volumes:
+  postgres-data:
+    driver: local
+  localstack-data:
+    driver: local
+
+# ─── Networks ─────────────────────────────────────────────────────────────────
+networks:
+  smartfreight-local:
+    driver: bridge

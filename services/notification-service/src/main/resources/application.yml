@@ -1,0 +1,41 @@
+spring:
+  application:
+    name: notification-service
+  # Thymeleaf template engine — finds templates in classpath:templates/
+  thymeleaf:
+    mode: HTML
+    encoding: UTF-8
+    cache: true  # Set to false in local for hot reload
+    prefix: classpath:/templates/
+    suffix: .html
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:#{null}}
+  ses:
+    # Must be a verified SES identity (domain or email address)
+    from-address: ${SES_FROM_ADDRESS:noreply@smartfreight.com}
+    reply-to-address: ${SES_REPLY_TO:support@smartfreight.com}
+    # SES configuration set for bounce/complaint tracking in CloudWatch
+    configuration-set-name: ${SES_CONFIG_SET:smartfreight-notifications}
+  sqs:
+    notification-queue-url: ${NOTIFICATION_QUEUE_URL:http://localhost:4566/000000000000/notification-queue}
+
+app:
+  base-url: ${APP_BASE_URL:https://app.smartfreight.com}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  cloudwatch:
+    metrics:
+      export:
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:false}
+
+logging:
+  level:
+    root: INFO
+    com.smartfreight: DEBUG
+    org.thymeleaf: WARN

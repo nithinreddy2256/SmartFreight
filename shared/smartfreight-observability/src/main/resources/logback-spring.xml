@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SmartFreight Structured JSON Logging Configuration
+    ====================================================
+    All services include this logback config via the smartfreight-observability jar.
+
+    Log format (JSON):
+    {
+      "@timestamp": "2024-03-10T14:32:00.000Z",
+      "level": "INFO",
+      "service": "shipment-service",
+      "environment": "prod",
+      "correlationId": "req-abc-123",
+      "userId": "user-456",
+      "traceId": "x-amzn-trace-id-value",
+      "thread": "http-nio-8080-exec-1",
+      "logger": "c.s.shipment.service.ShipmentService",
+      "message": "Shipment created successfully",
+      "shipmentId": "ship-789",
+      "duration_ms": 42
+    }
+
+    Appender selection by Spring profile:
+    - local: console with color (human-readable, not JSON)
+    - dev/test/prod: JSON console (CloudWatch Logs parses JSON fields automatically)
+-->
+<configuration>
+    <!-- Properties set in application.yml (or by Spring Boot) -->
+    <springProperty name="SERVICE_NAME" source="spring.application.name" defaultValue="smartfreight"/>
+    <springProperty name="ENVIRONMENT" source="spring.profiles.active" defaultValue="local"/>
+    <springProperty name="LOG_LEVEL" source="logging.level.root" defaultValue="INFO"/>
+
+    <!-- ================================================================
+         JSON APPENDER — used in dev/test/prod environments
+         CloudWatch Logs Insights automatically indexes JSON fields,
+         enabling queries like:
+           fields @timestamp, correlationId, message, duration_ms
+           | filter service = "shipment-service"
+           | filter level = "ERROR"
+         ================================================================ -->
+    <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <!-- Include standard MDC fields in every log line -->
+            <includeMdcKeyName>correlationId</includeMdcKeyName>
+            <includeMdcKeyName>userId</includeMdcKeyName>
+            <includeMdcKeyName>traceId</includeMdcKeyName>
+            <includeMdcKeyName>shipmentId</includeMdcKeyName>
+            <includeMdcKeyName>invoiceId</includeMdcKeyName>
+
+            <!-- Add static service metadata to every log line -->
+            <customFields>{"service":"${SERVICE_NAME}","environment":"${ENVIRONMENT}"}</customFields>
+
+            <!-- Rename default fields for CloudWatch compatibility -->
+            <fieldNames>
+                <timestamp>@timestamp</timestamp>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+
+            <!-- Don't include stack trace inline — too noisy; log as separate field -->
+            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                <maxDepthPerCause>10</maxDepthPerCause>
+                <maxLength>2048</maxLength>
+                <shortenedClassNameLength>20</shortenedClassNameLength>
+                <rootCauseFirst>true</rootCauseFirst>
+            </throwableConverter>
+        </encoder>
+    </appender>
+
+    <!-- ================================================================
+         CONSOLE APPENDER — used only for local development
+         Color-coded, human-readable output
+         ================================================================ -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <pattern>%cyan(%d{HH:mm:ss.SSS}) %highlight(%-5level) [%thread] [%X{correlationId:-no-corr-id}] %yellow(%logger{36}) - %msg%n%throwable</pattern>
+        </encoder>
+    </appender>
+
+    <!-- ================================================================
+         ASYNC WRAPPER — prevents logging from blocking request threads
+         Buffer: 512 events. On overflow: drops TRACE/DEBUG/INFO events.
+         ================================================================ -->
+    <appender name="ASYNC_JSON" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>20</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="JSON_CONSOLE"/>
+    </appender>
+
+    <!-- ================================================================
+         LOGGER CONFIGURATION
+         ================================================================ -->
+
+    <!-- Reduce noise from framework internals -->
+    <logger name="org.springframework" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.flywaydb" level="INFO"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="io.awspring.cloud" level="INFO"/>
+    <logger name="software.amazon.awssdk" level="WARN"/>
+
+    <!-- SmartFreight application code — full detail -->
+    <logger name="com.smartfreight" level="${LOG_LEVEL}"/>
+
+    <!-- ================================================================
+         ROOT LOGGER — profile-specific appender selection
+         ================================================================ -->
+    <springProfile name="local">
+        <root level="${LOG_LEVEL}">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <springProfile name="dev,test,prod">
+        <root level="${LOG_LEVEL}">
+            <appender-ref ref="ASYNC_JSON"/>
+        </root>
+    </springProfile>
+
+    <!-- Fallback (no profile active) -->
+    <springProfile name="!local &amp; !dev &amp; !test &amp; !prod">
+        <root level="${LOG_LEVEL}">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+</configuration>

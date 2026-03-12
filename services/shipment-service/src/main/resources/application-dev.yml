@@ -1,0 +1,23 @@
+# ─── DEV ENVIRONMENT OVERRIDES ───────────────────────────────────────────────
+# Applied when spring.profiles.active=dev
+# Environment variables are set by ECS task definition via Secrets Manager
+
+spring:
+  datasource:
+    # Aurora Serverless v2 (dev) — connection string from Secrets Manager
+    url: ${DATABASE_URL}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    show-sql: true  # Helpful for dev debugging
+
+management:
+  cloudwatch:
+    metrics:
+      export:
+        enabled: true
+
+logging:
+  level:
+    com.smartfreight: DEBUG
+    io.awspring.cloud: DEBUG

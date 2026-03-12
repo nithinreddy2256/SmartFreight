@@ -1,0 +1,621 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.smartfreight</groupId>
+    <artifactId>smartfreight-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>SmartFreight Parent POM</name>
+    <description>
+        SmartFreight — Intelligent Logistics and Supply Chain Management Platform.
+        Root Maven POM providing Bill of Materials (BOM), plugin management,
+        and shared build configuration for all modules.
+    </description>
+
+    <!-- ===================================================================
+         MODULE REGISTRY
+         All Maven modules in the monorepo are declared here.
+         Build order is determined by dependency declarations below.
+         =================================================================== -->
+    <modules>
+        <!-- Shared libraries (built first — no Spring Boot apps) -->
+        <module>shared/smartfreight-common</module>
+        <module>shared/smartfreight-aws-starter</module>
+        <module>shared/smartfreight-observability</module>
+
+        <!-- Microservices (depend on shared libraries) -->
+        <module>services/shipment-service</module>
+        <module>services/carrier-service</module>
+        <module>services/invoice-service</module>
+        <module>services/document-service</module>
+        <module>services/notification-service</module>
+        <module>services/analytics-service</module>
+
+        <!-- Lambda functions (lightweight, no Spring Boot app context) -->
+        <module>lambdas/carrier-webhook-handler</module>
+        <module>lambdas/s3-document-processor</module>
+        <module>lambdas/invoice-ocr-trigger</module>
+        <module>lambdas/carrier-rate-refresh</module>
+    </modules>
+
+    <!-- ===================================================================
+         PROPERTIES — Centralized version management
+         All dependency versions are defined here. Child modules inherit
+         these via ${property.name} references.
+         =================================================================== -->
+    <properties>
+        <!-- Java -->
+        <java.version>21</java.version>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- Spring Boot BOM version — pinned for stability -->
+        <spring-boot.version>3.2.3</spring-boot.version>
+
+        <!-- Spring Cloud AWS — integrates with Spring Boot auto-configuration -->
+        <spring-cloud-aws.version>3.1.1</spring-cloud-aws.version>
+
+        <!-- AWS SDK v2 — used directly in aws-starter and Lambda modules -->
+        <aws-sdk.version>2.24.13</aws-sdk.version>
+
+        <!-- AWS Lambda Java SDK -->
+        <aws-lambda.version>1.2.3</aws-lambda.version>
+        <aws-lambda-events.version>3.11.4</aws-lambda-events.version>
+
+        <!-- Database -->
+        <flyway.version>10.8.1</flyway.version>
+        <postgresql.version>42.7.2</postgresql.version>
+
+        <!-- Resilience / Observability -->
+        <resilience4j.version>2.2.0</resilience4j.version>
+        <logstash-logback-encoder.version>7.4</logstash-logback-encoder.version>
+        <micrometer.version>1.12.3</micrometer.version>
+
+        <!-- Caching -->
+        <caffeine.version>3.1.8</caffeine.version>
+
+        <!-- Document processing -->
+        <itext.version>8.0.3</itext.version>
+        <pdfbox.version>3.0.1</pdfbox.version>
+
+        <!-- Testing -->
+        <testcontainers.version>1.19.6</testcontainers.version>
+        <localstack.version>1.19.6</localstack.version>
+
+        <!-- Code quality -->
+        <checkstyle.version>10.14.1</checkstyle.version>
+        <spotbugs.version>4.8.3</spotbugs.version>
+        <jacoco.version>0.8.11</jacoco.version>
+
+        <!-- Build plugins -->
+        <jib.version>3.4.1</jib.version>
+        <maven-compiler.version>3.12.1</maven-compiler.version>
+        <maven-surefire.version>3.2.5</maven-surefire.version>
+        <maven-failsafe.version>3.2.5</maven-failsafe.version>
+        <maven-checkstyle.version>3.3.1</maven-checkstyle.version>
+        <spotbugs-maven.version>4.8.3.1</spotbugs-maven.version>
+
+        <!-- Container registry — overridden per environment in CI -->
+        <ecr.registry>YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com</ecr.registry>
+        <deploy.env>dev</deploy.env>
+    </properties>
+
+    <!-- ===================================================================
+         DEPENDENCY MANAGEMENT — Bill of Materials
+         Child modules declare dependencies WITHOUT versions.
+         Versions are resolved from this section.
+         =================================================================== -->
+    <dependencyManagement>
+        <dependencies>
+            <!-- Import Spring Boot BOM — manages all Spring versions -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Spring Cloud AWS BOM -->
+            <dependency>
+                <groupId>io.awspring.cloud</groupId>
+                <artifactId>spring-cloud-aws-dependencies</artifactId>
+                <version>${spring-cloud-aws.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- AWS SDK v2 BOM -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${aws-sdk.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Resilience4j BOM -->
+            <dependency>
+                <groupId>io.github.resilience4j</groupId>
+                <artifactId>resilience4j-bom</artifactId>
+                <version>${resilience4j.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- Testcontainers BOM -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!-- ===============================================
+                 Internal SmartFreight modules
+                 =============================================== -->
+            <dependency>
+                <groupId>com.smartfreight</groupId>
+                <artifactId>smartfreight-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartfreight</groupId>
+                <artifactId>smartfreight-aws-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.smartfreight</groupId>
+                <artifactId>smartfreight-observability</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- ===============================================
+                 External dependencies with explicit versions
+                 (not covered by BOMs above)
+                 =============================================== -->
+
+            <!-- AWS Lambda runtime -->
+            <dependency>
+                <groupId>com.amazonaws</groupId>
+                <artifactId>aws-lambda-java-core</artifactId>
+                <version>${aws-lambda.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.amazonaws</groupId>
+                <artifactId>aws-lambda-java-events</artifactId>
+                <version>${aws-lambda-events.version}</version>
+            </dependency>
+
+            <!-- PostgreSQL driver -->
+            <dependency>
+                <groupId>org.postgresql</groupId>
+                <artifactId>postgresql</artifactId>
+                <version>${postgresql.version}</version>
+                <scope>runtime</scope>
+            </dependency>
+
+            <!-- Flyway PostgreSQL support -->
+            <dependency>
+                <groupId>org.flywaydb</groupId>
+                <artifactId>flyway-database-postgresql</artifactId>
+                <version>${flyway.version}</version>
+            </dependency>
+
+            <!-- Structured JSON logging -->
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback-encoder.version}</version>
+            </dependency>
+
+            <!-- Caffeine in-process cache -->
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
+            </dependency>
+
+            <!-- PDF generation (invoice remittance advice) -->
+            <dependency>
+                <groupId>com.itextpdf</groupId>
+                <artifactId>itext-core</artifactId>
+                <version>${itext.version}</version>
+                <type>pom</type>
+            </dependency>
+
+            <!-- PDF text extraction (pre-Textract fallback) -->
+            <dependency>
+                <groupId>org.apache.pdfbox</groupId>
+                <artifactId>pdfbox</artifactId>
+                <version>${pdfbox.version}</version>
+            </dependency>
+
+            <!-- Micrometer CloudWatch registry (not in Spring Boot BOM) -->
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-registry-cloudwatch2</artifactId>
+                <version>${micrometer.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <!-- ===================================================================
+         COMMON DEPENDENCIES — Inherited by all child modules
+         Only truly universal dependencies belong here.
+         =================================================================== -->
+    <dependencies>
+        <!-- Lombok — boilerplate reduction (all modules benefit) -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Testing — inherited by all modules -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <!-- ===================================================================
+         BUILD PLUGIN MANAGEMENT — Centralized plugin configuration
+         Child modules inherit these configurations without repeating them.
+         =================================================================== -->
+    <build>
+        <pluginManagement>
+            <plugins>
+                <!-- Java 21 compiler with annotation processing for Lombok -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler.version}</version>
+                    <configuration>
+                        <release>21</release>
+                        <compilerArgs>
+                            <arg>-parameters</arg>
+                        </compilerArgs>
+                        <annotationProcessorPaths>
+                            <path>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                                <version>${lombok.version}</version>
+                            </path>
+                        </annotationProcessorPaths>
+                    </configuration>
+                </plugin>
+
+                <!-- Spring Boot plugin — fat JAR and layered image support -->
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                    <configuration>
+                        <excludes>
+                            <exclude>
+                                <groupId>org.projectlombok</groupId>
+                                <artifactId>lombok</artifactId>
+                            </exclude>
+                        </excludes>
+                        <!-- Layered JAR for faster Jib builds (each layer cached independently) -->
+                        <layers>
+                            <enabled>true</enabled>
+                        </layers>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>repackage</goal>
+                                <goal>build-info</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Jib — containerize without Docker daemon, push directly to ECR -->
+                <plugin>
+                    <groupId>com.google.cloud.tools</groupId>
+                    <artifactId>jib-maven-plugin</artifactId>
+                    <version>${jib.version}</version>
+                    <configuration>
+                        <from>
+                            <!-- Distroless: minimal attack surface, no shell, non-root -->
+                            <image>gcr.io/distroless/java21-debian12:nonroot</image>
+                        </from>
+                        <to>
+                            <image>${ecr.registry}/smartfreight/${project.artifactId}</image>
+                            <tags>
+                                <!-- Tag with git SHA (set in CI via -Dgit.commit.sha=...) -->
+                                <tag>${git.commit.sha}</tag>
+                                <!-- Tag with environment for easy lookup -->
+                                <tag>${deploy.env}-latest</tag>
+                            </tags>
+                        </to>
+                        <container>
+                            <jvmFlags>
+                                <!-- Respect container CPU/memory limits -->
+                                <jvmFlag>-XX:+UseContainerSupport</jvmFlag>
+                                <!-- Use 75% of container memory for heap -->
+                                <jvmFlag>-XX:MaxRAMPercentage=75.0</jvmFlag>
+                                <!-- Activate Spring profile matching environment -->
+                                <jvmFlag>-Dspring.profiles.active=${deploy.env}</jvmFlag>
+                                <!-- Faster startup (skip some JVM optimizations) -->
+                                <jvmFlag>-XX:TieredStopAtLevel=1</jvmFlag>
+                            </jvmFlags>
+                            <ports>
+                                <port>8080</port>
+                            </ports>
+                            <!-- Reproducible builds — use current timestamp -->
+                            <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+                            <!-- Run as non-root (distroless nonroot UID 65532) -->
+                            <user>nonroot:nonroot</user>
+                        </container>
+                    </configuration>
+                </plugin>
+
+                <!-- Unit test runner -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire.version}</version>
+                    <configuration>
+                        <!-- Exclude integration tests from unit test phase -->
+                        <excludes>
+                            <exclude>**/*IT.java</exclude>
+                            <exclude>**/*IntegrationTest.java</exclude>
+                        </excludes>
+                        <!-- JUnit 5 native support -->
+                        <useModulePath>false</useModulePath>
+                    </configuration>
+                </plugin>
+
+                <!-- Integration test runner (mvn verify -Pfailsafe) -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>${maven-failsafe.version}</version>
+                    <configuration>
+                        <includes>
+                            <include>**/*IT.java</include>
+                            <include>**/*IntegrationTest.java</include>
+                        </includes>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- JaCoCo — test coverage reporting (80% line coverage gate) -->
+                <plugin>
+                    <groupId>org.jacoco</groupId>
+                    <artifactId>jacoco-maven-plugin</artifactId>
+                    <version>${jacoco.version}</version>
+                    <executions>
+                        <execution>
+                            <id>prepare-agent</id>
+                            <goals>
+                                <goal>prepare-agent</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>report</id>
+                            <phase>test</phase>
+                            <goals>
+                                <goal>report</goal>
+                            </goals>
+                        </execution>
+                        <execution>
+                            <id>check</id>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                            <configuration>
+                                <rules>
+                                    <rule>
+                                        <element>BUNDLE</element>
+                                        <limits>
+                                            <limit>
+                                                <counter>LINE</counter>
+                                                <value>COVEREDRATIO</value>
+                                                <minimum>0.80</minimum>
+                                            </limit>
+                                        </limits>
+                                    </rule>
+                                </rules>
+                                <!-- Exclude generated code and config classes -->
+                                <excludes>
+                                    <exclude>**/*Application.class</exclude>
+                                    <exclude>**/config/**</exclude>
+                                    <exclude>**/*Config.class</exclude>
+                                    <exclude>**/*DTO.class</exclude>
+                                    <exclude>**/*Dto.class</exclude>
+                                    <exclude>**/*Entity.class</exclude>
+                                </excludes>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Checkstyle — enforce Google Java Style -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>${maven-checkstyle.version}</version>
+                    <configuration>
+                        <configLocation>checkstyle/google_checks.xml</configLocation>
+                        <suppressionsLocation>checkstyle/suppressions.xml</suppressionsLocation>
+                        <consoleOutput>true</consoleOutput>
+                        <failsOnError>true</failsOnError>
+                        <linkXRef>false</linkXRef>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>checkstyle-validate</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- SpotBugs — static analysis for common bug patterns -->
+                <plugin>
+                    <groupId>com.github.spotbugs</groupId>
+                    <artifactId>spotbugs-maven-plugin</artifactId>
+                    <version>${spotbugs-maven.version}</version>
+                    <configuration>
+                        <effort>Max</effort>
+                        <threshold>Medium</threshold>
+                        <excludeFilterFile>spotbugs/exclusions.xml</excludeFilterFile>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>spotbugs-check</id>
+                            <phase>verify</phase>
+                            <goals>
+                                <goal>check</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Git commit ID — provides ${git.commit.sha} for Jib tagging -->
+                <plugin>
+                    <groupId>io.github.git-commit-id</groupId>
+                    <artifactId>git-commit-id-maven-plugin</artifactId>
+                    <version>7.0.0</version>
+                    <executions>
+                        <execution>
+                            <id>get-git-info</id>
+                            <phase>initialize</phase>
+                            <goals>
+                                <goal>revision</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <generateGitPropertiesFile>true</generateGitPropertiesFile>
+                        <generateGitPropertiesFilename>
+                            ${project.build.outputDirectory}/git.properties
+                        </generateGitPropertiesFilename>
+                        <commitIdGenerationMode>full</commitIdGenerationMode>
+                        <abbrevLength>8</abbrevLength>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <!-- ===============================================================
+             PLUGINS ACTIVE FOR ALL MODULES
+             These execute on every mvn build without child module opt-in.
+             =============================================================== -->
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+    <!-- ===================================================================
+         BUILD PROFILES
+         =================================================================== -->
+    <profiles>
+        <!-- Integration tests profile: mvn verify -Pfailsafe -->
+        <profile>
+            <id>failsafe</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Code quality gates: mvn verify -Pcode-quality -->
+        <profile>
+            <id>code-quality</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-checkstyle-plugin</artifactId>
+                    </plugin>
+                    <plugin>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-maven-plugin</artifactId>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Container build: mvn package -Pcontainerize -->
+        <profile>
+            <id>containerize</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.google.cloud.tools</groupId>
+                        <artifactId>jib-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <!-- build: push to ECR; buildTar: local tarball for testing -->
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Local containerize (no ECR push): mvn package -Pcontainerize-local -->
+        <profile>
+            <id>containerize-local</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.google.cloud.tools</groupId>
+                        <artifactId>jib-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>dockerBuild</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

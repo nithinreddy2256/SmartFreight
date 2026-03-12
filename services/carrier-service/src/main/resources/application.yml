@@ -1,0 +1,40 @@
+spring:
+  application:
+    name: carrier-service
+  cache:
+    type: caffeine
+    caffeine:
+      # Carrier rate cache: 5-minute TTL, max 500 entries
+      # (covers all lanes for ~10 carriers — enough to serve 99% of queries from cache)
+      spec: expireAfterWrite=300s,maximumSize=500
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:#{null}}
+  dynamodb:
+    carrier-rate-table-name: ${CARRIER_RATE_TABLE_NAME:CarrierRateTable-dev}
+  sns:
+    carrier-events-topic-arn: ${CARRIER_EVENTS_TOPIC_ARN:arn:aws:sns:us-east-1:000000000000:carrier-events}
+  sqs:
+    carrier-inbound-queue-url: ${CARRIER_INBOUND_QUEUE_URL:http://localhost:4566/000000000000/carrier-inbound-queue}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  cloudwatch:
+    metrics:
+      export:
+        enabled: ${CLOUDWATCH_METRICS_ENABLED:false}
+
+spring.security:
+  oauth2:
+    resourceserver:
+      jwt:
+        issuer-uri: ${COGNITO_ISSUER_URI:https://cognito-idp.us-east-1.amazonaws.com/local}
+
+logging:
+  level:
+    root: INFO
+    com.smartfreight: DEBUG
