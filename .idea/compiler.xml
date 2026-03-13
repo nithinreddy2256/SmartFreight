@@ -1,7 +1,45 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile default="true" name="Default" enabled="true" />
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="smartfreight-observability" />
+        <module name="smartfreight-common" />
+        <module name="smartfreight-aws-starter" />
+        <module name="notification-service" />
+        <module name="document-service" />
+        <module name="carrier-service" />
+        <module name="invoice-service" />
+        <module name="analytics-service" />
+        <module name="shipment-service" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="carrier-rate-refresh" target="21" />
+      <module name="carrier-webhook-handler" target="21" />
+      <module name="invoice-ocr-trigger" target="21" />
+      <module name="s3-document-processor" target="21" />
+    </bytecodeTargetLevel>
+  </component>
   <component name="JavacSettings">
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="analytics-service" options="-parameters" />
+      <module name="carrier-rate-refresh" options="-parameters" />
+      <module name="carrier-service" options="-parameters" />
+      <module name="carrier-webhook-handler" options="-parameters" />
+      <module name="document-service" options="-parameters" />
+      <module name="invoice-ocr-trigger" options="-parameters" />
+      <module name="invoice-service" options="-parameters" />
+      <module name="notification-service" options="-parameters" />
+      <module name="s3-document-processor" options="-parameters" />
+      <module name="shipment-service" options="-parameters" />
+      <module name="smartfreight-aws-starter" options="-parameters" />
+      <module name="smartfreight-common" options="-parameters" />
+      <module name="smartfreight-observability" options="-parameters" />
       <module name="smartfreight-parent" options="-parameters" />
     </option>
   </component>

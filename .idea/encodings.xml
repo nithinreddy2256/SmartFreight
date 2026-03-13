@@ -1,6 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/lambdas/carrier-rate-refresh/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/carrier-rate-refresh/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/carrier-webhook-handler/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/carrier-webhook-handler/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/invoice-ocr-trigger/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/invoice-ocr-trigger/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/s3-document-processor/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/lambdas/s3-document-processor/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/analytics-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/analytics-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/carrier-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/carrier-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/document-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/document-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/invoice-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/invoice-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/notification-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/notification-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/shipment-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/services/shipment-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-aws-starter/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-aws-starter/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-observability/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/shared/smartfreight-observability/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
   </component>
 </project>
