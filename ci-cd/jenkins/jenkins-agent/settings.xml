@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven settings for SmartFreight Jenkins agent.
+  Customise mirrors and proxies for your network environment.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0
+          https://maven.apache.org/xsd/settings-1.2.0.xsd">
+
+  <!-- Local repository cache: persist on agent volume for speed -->
+  <localRepository>/home/jenkins/.m2/repository</localRepository>
+
+  <!-- Do not use interactive mode in CI -->
+  <interactiveMode>false</interactiveMode>
+
+  <!-- Offline mode (set to true to disable network entirely, use cached deps) -->
+  <offline>false</offline>
+
+  <mirrors>
+    <!--
+      Optional: point to an internal Nexus/Artifactory mirror.
+      Remove or adjust the <url> to match your environment.
+    -->
+    <!--
+    <mirror>
+      <id>internal-nexus</id>
+      <mirrorOf>central</mirrorOf>
+      <url>https://nexus.internal.smartfreight.com/repository/maven-central/</url>
+    </mirror>
+    -->
+  </mirrors>
+
+  <profiles>
+    <profile>
+      <id>smartfreight-ci</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <properties>
+        <!-- Disable colour output in CI logs -->
+        <maven.color>false</maven.color>
+        <!-- Suppress progress transfer lines that bloat Jenkins console -->
+        <maven.no-transfer-progress>true</maven.no-transfer-progress>
+      </properties>
+      <repositories>
+        <repository>
+          <id>central</id>
+          <url>https://repo1.maven.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>central</id>
+          <url>https://repo1.maven.org/maven2</url>
+          <releases><enabled>true</enabled></releases>
+          <snapshots><enabled>false</enabled></snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+</settings>

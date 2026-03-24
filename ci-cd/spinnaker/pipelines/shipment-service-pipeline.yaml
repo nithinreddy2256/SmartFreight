@@ -1,0 +1,429 @@
+# =============================================================================
+# SmartFreight — Spinnaker Pipeline: shipment-service
+# =============================================================================
+# Deploys shipment-service across dev → test → prod using Blue/Green on ECS.
+# Prod uses a 10% canary with Kayenta real-time analysis before full rollout.
+#
+# To register:
+#   spin pipeline save --file shipment-service-pipeline.yaml
+# =============================================================================
+
+application: smartfreight
+name: shipment-service-deploy
+description: >
+  Blue/Green ECS deployment pipeline for shipment-service.
+  Promotes dev → test → prod with manual judgment gates.
+  Prod uses 10% canary + Kayenta analysis before full rollout.
+
+# ─── Triggers ────────────────────────────────────────────────────────────────
+triggers:
+  - type: jenkins
+    enabled: true
+    master: smartfreight-jenkins
+    job: smartfreight-ci/shipment-service
+    propertyFile: deploy/image-tag.json
+
+# ─── Pipeline-level parameters ───────────────────────────────────────────────
+parameterConfig:
+  - name: imageUri
+    label: Docker Image URI
+    description: Full ECR image URI with git SHA tag
+    required: true
+    default: ""
+
+  - name: gitSha
+    label: Git SHA
+    description: Git commit SHA that produced this image
+    required: false
+    default: ""
+
+  - name: environment
+    label: Target Environment
+    description: Deployment target (dev / test / prod)
+    required: true
+    default: dev
+    options:
+      - value: dev
+      - value: test
+      - value: prod
+
+# ─── Notifications ───────────────────────────────────────────────────────────
+notifications:
+  - type: slack
+    address: "#deployments"
+    when:
+      - pipeline.starting
+      - pipeline.complete
+      - pipeline.failed
+
+# ─── Stages ──────────────────────────────────────────────────────────────────
+stages:
+
+  # ── Stage 1: Bake ECS Task Definition ─────────────────────────────────────
+  - name: Bake Task Definition
+    refId: "1"
+    requisiteStageRefIds: []
+    type: bakeManifest
+    templateRenderer: SPEL
+    outputName: shipment-service-task-def
+    inputArtifacts:
+      - account: smartfreight-ecr
+        artifact:
+          type: docker/image
+          name: smartfreight/shipment-service
+          reference: "${ parameters.imageUri }"
+    template:
+      artifactAccount: smartfreight-s3
+      reference: "s3://smartfreight-spinnaker-config/task-definitions/shipment-service.json"
+      type: front50/pipelineTemplate
+    overrides:
+      image: "${ parameters.imageUri }"
+      environment: "${ parameters.environment }"
+
+  # ── Stage 2: Deploy to Dev ─────────────────────────────────────────────────
+  - name: Deploy to Dev
+    refId: "2"
+    requisiteStageRefIds: ["1"]
+    type: deployService
+    account: smartfreight-ecs-dev
+    cloudProvider: ecs
+    region: us-east-1
+    application: smartfreight
+    stack: dev
+    freeFormDetails: shipment-service
+    capacity:
+      desired: 1
+      min: 1
+      max: 2
+    deploymentStrategy:
+      type: redblack
+      rollback:
+        onFailure: true
+    ecsCluster: smartfreight-dev
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-dev
+        targetGroup: shipment-service-dev-tg
+        containerName: shipment-service
+        containerPort: 8080
+
+  # ── Stage 3: Health Check (Dev) ────────────────────────────────────────────
+  - name: Health Check (Dev)
+    refId: "3"
+    requisiteStageRefIds: ["2"]
+    type: wait
+    waitTime: 30
+    # Wait 30s for ALB target registration before checking health
+
+  - name: Verify ALB Health (Dev)
+    refId: "4"
+    requisiteStageRefIds: ["3"]
+    type: runJob
+    account: smartfreight-ecs-dev
+    cloudProvider: ecs
+    application: smartfreight
+    region: us-east-1
+    cluster: smartfreight-dev
+    jobSpec:
+      template:
+        spec:
+          containers:
+            - name: health-check
+              image: curlimages/curl:latest
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  echo "Checking ALB health for shipment-service..."
+                  for i in $(seq 1 24); do
+                    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                      http://smartfreight-internal-dev.us-east-1.elb.amazonaws.com/api/shipments/actuator/health)
+                    echo "Attempt $i/24 — HTTP $STATUS"
+                    [ "$STATUS" = "200" ] && echo "Health check passed!" && exit 0
+                    sleep 5
+                  done
+                  echo "Health check timed out after 2 minutes"
+                  exit 1
+          restartPolicy: Never
+
+  # ── Stage 5: Manual Judgment — Promote to Test ────────────────────────────
+  - name: "Promote to Test?"
+    refId: "5"
+    requisiteStageRefIds: ["4"]
+    type: manualJudgment
+    instructions: |
+      **shipment-service** has been deployed to **dev** successfully.
+
+      - Image: `${ parameters.imageUri }`
+      - Git SHA: `${ parameters.gitSha }`
+      - Health check: PASSED ✅
+
+      Review the dev environment and approve to promote to **test**.
+    judgmentInputs:
+      - value: "Approve — promote to test"
+      - value: "Reject — stop pipeline"
+    notifications:
+      - type: slack
+        address: "#deployments"
+        message: "⏳ Awaiting approval to promote shipment-service to test"
+        when:
+          - manualJudgment
+    propagateAuthenticationContext: true
+    sendNotifications: true
+
+  # ── Stage 6: Deploy to Test ────────────────────────────────────────────────
+  - name: Deploy to Test
+    refId: "6"
+    requisiteStageRefIds: ["5"]
+    type: deployService
+    account: smartfreight-ecs-test
+    cloudProvider: ecs
+    region: us-east-1
+    application: smartfreight
+    stack: test
+    freeFormDetails: shipment-service
+    capacity:
+      desired: 1
+      min: 1
+      max: 3
+    deploymentStrategy:
+      type: redblack
+      rollback:
+        onFailure: true
+    ecsCluster: smartfreight-test
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-test
+        targetGroup: shipment-service-test-tg
+        containerName: shipment-service
+        containerPort: 8080
+    stageEnabled:
+      expression: >
+        "${ #judgment('Promote to Test?') == 'Approve — promote to test' }"
+      type: expression
+
+  # ── Stage 7: Integration Tests (Test env) ─────────────────────────────────
+  - name: Integration Tests
+    refId: "7"
+    requisiteStageRefIds: ["6"]
+    type: jenkins
+    master: smartfreight-jenkins
+    job: smartfreight-integration-tests/shipment-service
+    parameters:
+      ENVIRONMENT: test
+      IMAGE_URI: "${ parameters.imageUri }"
+    propertyFile: ""
+    markUnstableAsSuccessful: false
+    waitForCompletion: true
+
+  # ── Stage 8: Manual Judgment — Promote to Prod ────────────────────────────
+  - name: "Promote to Production?"
+    refId: "8"
+    requisiteStageRefIds: ["7"]
+    type: manualJudgment
+    instructions: |
+      **shipment-service** has passed integration tests in **test**.
+
+      - Image: `${ parameters.imageUri }`
+      - Git SHA: `${ parameters.gitSha }`
+      - Integration tests: PASSED ✅
+
+      Approve to begin **production canary deployment** (10% traffic).
+      Auto-rollback triggers if error rate exceeds 1% during canary window.
+    judgmentInputs:
+      - value: "Approve — deploy canary to prod"
+      - value: "Reject — stop pipeline"
+    notifications:
+      - type: slack
+        address: "#deployments-prod"
+        message: "⏳ Awaiting approval to promote shipment-service to PRODUCTION"
+        when:
+          - manualJudgment
+    propagateAuthenticationContext: true
+    sendNotifications: true
+
+  # ── Stage 9: Deploy Canary (10%) ──────────────────────────────────────────
+  - name: Deploy Canary (10%)
+    refId: "9"
+    requisiteStageRefIds: ["8"]
+    type: deployService
+    account: smartfreight-ecs-prod
+    cloudProvider: ecs
+    region: us-east-1
+    application: smartfreight
+    stack: prod
+    freeFormDetails: shipment-service-canary
+    capacity:
+      desired: 1
+      min: 1
+      max: 1
+    deploymentStrategy:
+      type: redblack
+      rollback:
+        onFailure: true
+    ecsCluster: smartfreight-prod
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-prod
+        targetGroup: shipment-service-prod-canary-tg
+        containerName: shipment-service
+        containerPort: 8080
+        weight: 10   # 10% of traffic to canary
+    stageEnabled:
+      expression: >
+        "${ #judgment('Promote to Production?') == 'Approve — deploy canary to prod' }"
+      type: expression
+
+  # ── Stage 10: Kayenta Canary Analysis ─────────────────────────────────────
+  - name: Canary Analysis
+    refId: "10"
+    requisiteStageRefIds: ["9"]
+    type: kayentaCanary
+    canaryConfig:
+      canaryConfigId: shipment-service-canary-config
+      lifetimeDuration: "PT15M"   # 15-minute canary window
+      scoreThresholds:
+        pass: 75
+        marginal: 60
+      metricsAccountName: smartfreight-cloudwatch
+      storageAccountName: smartfreight-s3
+    scopes:
+      - name: default
+        controlScope:
+          scope: shipment-service-prod-stable
+          region: us-east-1
+          step: 60
+        experimentScope:
+          scope: shipment-service-prod-canary
+          region: us-east-1
+          step: 60
+    analysisType: realTime
+    metrics:
+      # Error rate — critical metric, weight 60
+      - name: error_rate
+        query:
+          type: cloudwatch
+          metricName: HTTPCode_Target_5XX_Count
+          namespace: AWS/ApplicationELB
+          statistics: Sum
+        groups:
+          - critical
+        analysisConfigurations:
+          canary:
+            direction: increase
+            nanStrategy: replace
+            critical: true
+
+      # p99 latency — weight 40
+      - name: p99_latency
+        query:
+          type: cloudwatch
+          metricName: TargetResponseTime
+          namespace: AWS/ApplicationELB
+          statistics: p99
+        groups:
+          - performance
+        analysisConfigurations:
+          canary:
+            direction: increase
+            nanStrategy: replace
+
+  # ── Stage 11: Deploy Full Production ──────────────────────────────────────
+  - name: Deploy Full Production
+    refId: "11"
+    requisiteStageRefIds: ["10"]
+    type: deployService
+    account: smartfreight-ecs-prod
+    cloudProvider: ecs
+    region: us-east-1
+    application: smartfreight
+    stack: prod
+    freeFormDetails: shipment-service
+    capacity:
+      desired: 2
+      min: 2
+      max: 6
+    deploymentStrategy:
+      type: redblack
+      rollback:
+        onFailure: true
+    ecsCluster: smartfreight-prod
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-prod
+        targetGroup: shipment-service-prod-tg
+        containerName: shipment-service
+        containerPort: 8080
+        weight: 100  # Full traffic to stable
+    stageEnabled:
+      expression: >
+        "${ #stage('Canary Analysis').context.canaryScore >= 75 }"
+      type: expression
+
+  # ── Stage 12: Destroy Canary ──────────────────────────────────────────────
+  - name: Destroy Canary
+    refId: "12"
+    requisiteStageRefIds: ["11"]
+    type: destroyService
+    account: smartfreight-ecs-prod
+    cloudProvider: ecs
+    region: us-east-1
+    cluster: smartfreight-prod
+    target: current_asg_dynamic
+    moniker:
+      app: smartfreight
+      stack: prod
+      detail: shipment-service-canary
+
+  # ── Stage 13: Rollback Canary (on analysis failure) ───────────────────────
+  - name: Rollback Canary
+    refId: "13"
+    requisiteStageRefIds: ["10"]
+    type: rollbackCluster
+    account: smartfreight-ecs-prod
+    cloudProvider: ecs
+    region: us-east-1
+    cluster: smartfreight-prod-shipment-service-canary
+    moniker:
+      app: smartfreight
+      stack: prod
+      detail: shipment-service-canary
+    targetHealthyDeployPercentage: 100
+    stageEnabled:
+      expression: >
+        "${ #stage('Canary Analysis').context.canaryScore < 75 }"
+      type: expression
+
+  # ── Stage 14: Slack Notification ──────────────────────────────────────────
+  - name: Notify Result
+    refId: "14"
+    requisiteStageRefIds: ["12", "13"]
+    type: wait
+    waitTime: 1
+    notifications:
+      - type: slack
+        address: "#deployments-prod"
+        message: |
+          ${ #stage('Deploy Full Production').status == 'SUCCEEDED'
+            ? '✅ shipment-service deployed to PRODUCTION successfully.\nImage: ' + parameters.imageUri
+            : '❌ shipment-service PRODUCTION deployment failed or was rolled back.\nImage: ' + parameters.imageUri }
+        when:
+          - stage.complete
+          - stage.failed

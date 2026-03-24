@@ -1,0 +1,895 @@
+// ============================================================================
+// SmartFreight — Shared Parameterized Jenkins Pipeline
+// Supports all 6 microservices with a single Jenkinsfile.
+// Services: shipment-service, carrier-service, invoice-service,
+//           document-service, notification-service, analytics-service
+// ============================================================================
+
+pipeline {
+
+    // -------------------------------------------------------------------------
+    // Run on the custom SmartFreight Jenkins agent (built from jenkins-agent/Dockerfile)
+    // -------------------------------------------------------------------------
+    agent {
+        label 'smartfreight-agent'
+    }
+
+    // -------------------------------------------------------------------------
+    // Pipeline parameters — set at queue time or via Spinnaker trigger
+    // -------------------------------------------------------------------------
+    parameters {
+        choice(
+            name: 'SERVICE_NAME',
+            choices: [
+                'auto-detect',
+                'shipment-service',
+                'carrier-service',
+                'invoice-service',
+                'document-service',
+                'notification-service',
+                'analytics-service'
+            ],
+            description: 'Microservice to build. Choose "auto-detect" to infer from git diff.'
+        )
+        choice(
+            name: 'ENVIRONMENT',
+            choices: ['dev', 'test', 'prod'],
+            description: 'Target deployment environment.'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip unit and integration tests (emergency hotfix only).'
+        )
+        string(
+            name: 'GIT_BRANCH',
+            defaultValue: 'main',
+            description: 'Git branch to build.'
+        )
+        string(
+            name: 'COVERAGE_THRESHOLD',
+            defaultValue: '80',
+            description: 'Minimum JaCoCo line coverage percentage (0-100).'
+        )
+        string(
+            name: 'SPINNAKER_GATE_URL',
+            defaultValue: 'http://spinnaker-gate:8084',
+            description: 'Spinnaker Gate API base URL.'
+        )
+        string(
+            name: 'SLACK_CHANNEL',
+            defaultValue: '#smartfreight-ci',
+            description: 'Slack channel for build notifications.'
+        )
+    }
+
+    // -------------------------------------------------------------------------
+    // Environment — AWS credentials from Jenkins credential store,
+    // plus computed values set in Stage 1 (Checkout).
+    // -------------------------------------------------------------------------
+    environment {
+        // AWS credentials (stored as Jenkins "AWS Credentials" type)
+        AWS_ACCESS_KEY_ID     = credentials('aws-access-key-id')
+        AWS_SECRET_ACCESS_KEY = credentials('aws-secret-access-key')
+        AWS_DEFAULT_REGION    = 'us-east-1'
+
+        // ECR registry (no trailing slash)
+        ECR_REGISTRY          = credentials('ecr-registry-url')
+
+        // Slack webhook for notifications
+        SLACK_WEBHOOK_URL     = credentials('slack-webhook-url')
+
+        // Spinnaker credentials
+        SPINNAKER_API_TOKEN   = credentials('spinnaker-api-token')
+
+        // Maven options — allocate 2 GB to the Maven JVM; disable batch mode
+        // colour codes that pollute Jenkins logs
+        MAVEN_OPTS            = '-Xmx2g -Xms512m -XX:+UseG1GC'
+
+        // Populated dynamically in Checkout stage
+        DETECTED_SERVICE      = ''
+        GIT_COMMIT_SHA        = ''
+        IMAGE_URI             = ''
+        PIPELINE_EXEC_ID      = ''
+    }
+
+    options {
+        // Keep only the last 20 builds to save disk space
+        buildDiscarder(logRotator(numToKeepStr: '20', artifactNumToKeepStr: '10'))
+        // Fail if the whole pipeline takes longer than 60 minutes
+        timeout(time: 60, unit: 'MINUTES')
+        // Do not allow concurrent builds for the same branch
+        disableConcurrentBuilds()
+        // Prepend timestamps to every log line
+        timestamps()
+        // Add ANSI colour support (requires AnsiColor plugin)
+        ansiColor('xterm')
+    }
+
+    // =========================================================================
+    // STAGES
+    // =========================================================================
+    stages {
+
+        // =====================================================================
+        // Stage 1 — Checkout
+        // Shallow clone to reduce bandwidth; detect which service changed.
+        // =====================================================================
+        stage('Checkout') {
+            steps {
+                script {
+                    echo "=== Stage 1: Checkout ==="
+
+                    // Shallow clone — depth 2 so we can do a diff against HEAD^
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${params.GIT_BRANCH}"]],
+                        extensions: [
+                            [$class: 'CloneOption', depth: 2, shallow: true, noTags: false],
+                            [$class: 'CleanBeforeCheckout'],
+                            [$class: 'PruneStaleBranch']
+                        ],
+                        userRemoteConfigs: scm.userRemoteConfigs
+                    ])
+
+                    // Capture the full git SHA for image tagging
+                    env.GIT_COMMIT_SHA = sh(
+                        script: 'git rev-parse --short=12 HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    echo "Git SHA: ${env.GIT_COMMIT_SHA}"
+
+                    // -------------------------------------------------------
+                    // Determine which service to build
+                    // -------------------------------------------------------
+                    if (params.SERVICE_NAME != 'auto-detect') {
+                        env.DETECTED_SERVICE = params.SERVICE_NAME
+                        echo "Service explicitly specified: ${env.DETECTED_SERVICE}"
+                    } else {
+                        // Compare HEAD against its parent to find changed paths
+                        def changedFiles = sh(
+                            script: 'git diff --name-only HEAD^ HEAD || git diff --name-only HEAD',
+                            returnStdout: true
+                        ).trim()
+
+                        echo "Changed files:\n${changedFiles}"
+
+                        def services = [
+                            'shipment-service',
+                            'carrier-service',
+                            'invoice-service',
+                            'document-service',
+                            'notification-service',
+                            'analytics-service'
+                        ]
+
+                        env.DETECTED_SERVICE = ''
+                        for (svc in services) {
+                            if (changedFiles.contains("services/${svc}/")) {
+                                env.DETECTED_SERVICE = svc
+                                echo "Auto-detected changed service: ${svc}"
+                                break
+                            }
+                        }
+
+                        // Shared library changes → rebuild all services (signal with 'all')
+                        if (!env.DETECTED_SERVICE && changedFiles.contains('shared/')) {
+                            env.DETECTED_SERVICE = 'all'
+                            echo "Shared library change detected — all services will be rebuilt."
+                        }
+
+                        // Root POM or CI config changes → rebuild all
+                        if (!env.DETECTED_SERVICE && (
+                            changedFiles.contains('pom.xml') ||
+                            changedFiles.contains('ci-cd/')
+                        )) {
+                            env.DETECTED_SERVICE = 'all'
+                            echo "Root POM / CI config change detected — all services will be rebuilt."
+                        }
+
+                        if (!env.DETECTED_SERVICE) {
+                            echo "No service-specific changes detected. Nothing to build."
+                            currentBuild.result = 'SUCCESS'
+                            return
+                        }
+                    }
+
+                    // Compose the ECR image URI (used later by Jib + Spinnaker)
+                    env.IMAGE_URI = "${env.ECR_REGISTRY}/smartfreight/${env.DETECTED_SERVICE}:${env.GIT_COMMIT_SHA}"
+
+                    echo "Build target : ${env.DETECTED_SERVICE}"
+                    echo "Image URI    : ${env.IMAGE_URI}"
+                    echo "Environment  : ${params.ENVIRONMENT}"
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 2 — Lambda Container Build
+        // Build each Lambda function as a Docker image and push to ECR.
+        // Runs in parallel with (or before) the Java microservice pipeline.
+        // Triggered when lambdas/ directory changes or SERVICE_NAME is a lambda.
+        // =====================================================================
+        stage('Lambda Container Build') {
+            when {
+                anyOf {
+                    expression {
+                        def changedFiles = sh(
+                            script: 'git diff --name-only HEAD^ HEAD 2>/dev/null || git diff --name-only HEAD',
+                            returnStdout: true
+                        ).trim()
+                        return changedFiles.contains('lambdas/')
+                    }
+                    expression { params.SERVICE_NAME in [
+                        'invoice-ocr-trigger',
+                        'carrier-rate-refresh',
+                        's3-document-processor',
+                        'carrier-webhook-handler'
+                    ]}
+                }
+            }
+            steps {
+                script {
+                    echo "=== Stage 2: Lambda Container Build ==="
+
+                    def allLambdas = [
+                        'invoice-ocr-trigger',
+                        'carrier-rate-refresh',
+                        's3-document-processor',
+                        'carrier-webhook-handler'
+                    ]
+
+                    // Determine which lambdas changed
+                    def changedFiles = sh(
+                        script: 'git diff --name-only HEAD^ HEAD 2>/dev/null || git diff --name-only HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    def lambdasToBuild = params.SERVICE_NAME in allLambdas
+                        ? [params.SERVICE_NAME]
+                        : allLambdas.findAll { fn -> changedFiles.contains("lambdas/${fn}/") }
+
+                    if (!lambdasToBuild) {
+                        echo "No lambda changes detected — skipping lambda build."
+                        return
+                    }
+
+                    // Authenticate Docker to ECR
+                    sh """
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
+                        docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                    """
+
+                    timeout(time: 20, unit: 'MINUTES') {
+                        for (fn in lambdasToBuild) {
+                            def imageUri = "${env.ECR_REGISTRY}/smartfreight/lambda/${fn}:${env.GIT_COMMIT_SHA}"
+                            echo "Building Lambda image: ${fn} → ${imageUri}"
+
+                            // Ensure ECR repo exists
+                            sh """
+                                aws ecr describe-repositories \
+                                    --repository-names "smartfreight/lambda/${fn}" \
+                                    --region ${AWS_DEFAULT_REGION} 2>/dev/null || \
+                                aws ecr create-repository \
+                                    --repository-name "smartfreight/lambda/${fn}" \
+                                    --image-scanning-configuration scanOnPush=true \
+                                    --encryption-configuration encryptionType=AES256 \
+                                    --region ${AWS_DEFAULT_REGION}
+                            """
+
+                            sh """
+                                docker build \
+                                    --tag "${imageUri}" \
+                                    --tag "${env.ECR_REGISTRY}/smartfreight/lambda/${fn}:latest" \
+                                    lambdas/${fn}/
+
+                                trivy image \
+                                    --exit-code 1 \
+                                    --severity CRITICAL \
+                                    --no-progress \
+                                    --ignore-unfixed \
+                                    --timeout 10m \
+                                    "${imageUri}" || true
+
+                                docker push "${imageUri}"
+                                docker push "${env.ECR_REGISTRY}/smartfreight/lambda/${fn}:latest"
+                            """
+
+                            echo "Pushed Lambda image: ${imageUri}"
+                        }
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 3 — Code Quality
+        // Checkstyle (Google Java Style) + SpotBugs static analysis.
+        // =====================================================================
+        stage('Code Quality') {
+            when {
+                expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+            }
+            steps {
+                script {
+                    echo "=== Stage 2: Code Quality ==="
+
+                    def mvnModule = env.DETECTED_SERVICE == 'all'
+                        ? '.'
+                        : "services/${env.DETECTED_SERVICE}"
+
+                    // Run Checkstyle + SpotBugs via the code-quality Maven profile.
+                    // SpotBugs runs during the verify lifecycle via its plugin binding.
+                    timeout(time: 10, unit: 'MINUTES') {
+                        sh """
+                            cd ${mvnModule}
+                            mvn --batch-mode \
+                                --no-transfer-progress \
+                                checkstyle:check \
+                                spotbugs:check \
+                                -Pcode-quality \
+                                -DskipTests=true \
+                                -Dcheckstyle.failsOnError=true \
+                                -Dspotbugs.failOnError=true \
+                                -f pom.xml
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    // Archive Checkstyle and SpotBugs XML reports
+                    recordIssues(
+                        enabledForFailure: true,
+                        tools: [
+                            checkStyle(pattern: '**/target/checkstyle-result.xml'),
+                            spotBugs(pattern: '**/target/spotbugsXml.xml')
+                        ]
+                    )
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 3 — Unit Tests
+        // mvn test for the changed service; Surefire XML; JaCoCo 80% gate.
+        // =====================================================================
+        stage('Unit Tests') {
+            when {
+                allOf {
+                    expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+                    expression { !params.SKIP_TESTS }
+                }
+            }
+            steps {
+                script {
+                    echo "=== Stage 3: Unit Tests ==="
+
+                    def mvnModule = env.DETECTED_SERVICE == 'all'
+                        ? '.'
+                        : "services/${env.DETECTED_SERVICE}"
+
+                    timeout(time: 15, unit: 'MINUTES') {
+                        sh """
+                            cd ${mvnModule}
+                            mvn --batch-mode \
+                                --no-transfer-progress \
+                                test \
+                                -Dgit.commit.sha=${env.GIT_COMMIT_SHA} \
+                                -Djacoco.skip=false \
+                                -f pom.xml
+                        """
+                    }
+
+                    // Run the coverage gate shell script
+                    def coverageThreshold = params.COVERAGE_THRESHOLD ?: '80'
+                    def jacocoReport = "${mvnModule}/target/site/jacoco/jacoco.xml"
+                    sh """
+                        bash ${WORKSPACE}/ci-cd/jenkins/scripts/check-coverage.sh \
+                            "${jacocoReport}" \
+                            "${coverageThreshold}"
+                    """
+                }
+            }
+            post {
+                always {
+                    // Publish Surefire test results
+                    junit allowEmptyResults: true,
+                          testResults: '**/target/surefire-reports/*.xml'
+
+                    // Publish JaCoCo coverage report (requires JaCoCo Jenkins plugin)
+                    jacoco(
+                        execPattern: '**/target/jacoco.exec',
+                        classPattern: '**/target/classes',
+                        sourcePattern: '**/src/main/java',
+                        exclusionPattern: '**/*Application.class,**/config/**,**/*Config.class,**/*DTO.class',
+                        minimumLineCoverage: params.COVERAGE_THRESHOLD ?: '80'
+                    )
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 4 — Integration Tests
+        // mvn verify -Pfailsafe; Testcontainers spins up PostgreSQL + LocalStack.
+        // =====================================================================
+        stage('Integration Tests') {
+            when {
+                allOf {
+                    expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+                    expression { !params.SKIP_TESTS }
+                }
+            }
+            steps {
+                script {
+                    echo "=== Stage 4: Integration Tests ==="
+
+                    def mvnModule = env.DETECTED_SERVICE == 'all'
+                        ? '.'
+                        : "services/${env.DETECTED_SERVICE}"
+
+                    // Testcontainers requires access to the Docker socket.
+                    // The Jenkins agent must be running with --volume /var/run/docker.sock:/var/run/docker.sock
+                    timeout(time: 20, unit: 'MINUTES') {
+                        sh """
+                            cd ${mvnModule}
+                            mvn --batch-mode \
+                                --no-transfer-progress \
+                                verify \
+                                -Pfailsafe \
+                                -DskipUnitTests=true \
+                                -Dgit.commit.sha=${env.GIT_COMMIT_SHA} \
+                                -Dtestcontainers.reuse.enable=false \
+                                -f pom.xml
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    // Publish Failsafe integration test results
+                    junit allowEmptyResults: true,
+                          testResults: '**/target/failsafe-reports/*.xml'
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 5 — Build & Package
+        // Compile and package the fat JAR (tests already ran above).
+        // =====================================================================
+        stage('Build & Package') {
+            when {
+                expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+            }
+            steps {
+                script {
+                    echo "=== Stage 5: Build & Package ==="
+
+                    def mvnModule = env.DETECTED_SERVICE == 'all'
+                        ? '.'
+                        : "services/${env.DETECTED_SERVICE}"
+
+                    timeout(time: 10, unit: 'MINUTES') {
+                        sh """
+                            cd ${mvnModule}
+                            mvn --batch-mode \
+                                --no-transfer-progress \
+                                package \
+                                -DskipTests \
+                                -Dgit.commit.sha=${env.GIT_COMMIT_SHA} \
+                                -f pom.xml
+                        """
+                    }
+
+                    // Archive the fat JAR as a build artifact
+                    archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 6 — Container Build
+        // Use Jib (no Docker daemon required) to build and push to ECR.
+        // =====================================================================
+        stage('Container Build') {
+            when {
+                expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+            }
+            steps {
+                script {
+                    echo "=== Stage 6: Container Build (Jib → ECR) ==="
+
+                    def services = env.DETECTED_SERVICE == 'all'
+                        ? [
+                            'shipment-service',
+                            'carrier-service',
+                            'invoice-service',
+                            'document-service',
+                            'notification-service',
+                            'analytics-service'
+                          ]
+                        : [env.DETECTED_SERVICE]
+
+                    // Authenticate Docker to ECR before Jib push
+                    sh """
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
+                        docker login --username AWS --password-stdin ${env.ECR_REGISTRY}
+                    """
+
+                    // Ensure ECR repositories exist
+                    for (svc in services) {
+                        sh """
+                            aws ecr describe-repositories \
+                                --repository-names "smartfreight/${svc}" \
+                                --region ${AWS_DEFAULT_REGION} 2>/dev/null || \
+                            aws ecr create-repository \
+                                --repository-name "smartfreight/${svc}" \
+                                --image-scanning-configuration scanOnPush=true \
+                                --encryption-configuration encryptionType=AES256 \
+                                --region ${AWS_DEFAULT_REGION}
+                        """
+                    }
+
+                    timeout(time: 15, unit: 'MINUTES') {
+                        for (svc in services) {
+                            def svcImageUri = "${env.ECR_REGISTRY}/smartfreight/${svc}:${env.GIT_COMMIT_SHA}"
+                            echo "Pushing image for ${svc} → ${svcImageUri}"
+
+                            sh """
+                                cd services/${svc}
+                                mvn --batch-mode \
+                                    --no-transfer-progress \
+                                    jib:build \
+                                    -Pcontainerize \
+                                    -DskipTests \
+                                    -Dgit.commit.sha=${env.GIT_COMMIT_SHA} \
+                                    -Ddeploy.env=${params.ENVIRONMENT} \
+                                    -Decr.registry=${env.ECR_REGISTRY} \
+                                    -Djib.to.image=${svcImageUri} \
+                                    -f pom.xml
+                            """
+                        }
+                    }
+
+                    // For single-service builds, export IMAGE_URI for subsequent stages
+                    if (env.DETECTED_SERVICE != 'all') {
+                        env.IMAGE_URI = "${env.ECR_REGISTRY}/smartfreight/${env.DETECTED_SERVICE}:${env.GIT_COMMIT_SHA}"
+                    }
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 7 — Image Scan
+        // ECR built-in scan + Trivy; CRITICAL findings fail the build.
+        // =====================================================================
+        stage('Image Scan') {
+            when {
+                expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+            }
+            steps {
+                script {
+                    echo "=== Stage 7: Image Scan (ECR + Trivy) ==="
+
+                    def services = env.DETECTED_SERVICE == 'all'
+                        ? [
+                            'shipment-service',
+                            'carrier-service',
+                            'invoice-service',
+                            'document-service',
+                            'notification-service',
+                            'analytics-service'
+                          ]
+                        : [env.DETECTED_SERVICE]
+
+                    timeout(time: 15, unit: 'MINUTES') {
+                        for (svc in services) {
+                            def svcImageUri = "${env.ECR_REGISTRY}/smartfreight/${svc}:${env.GIT_COMMIT_SHA}"
+                            echo "Scanning image: ${svcImageUri}"
+
+                            // -----------------------------------------------
+                            // ECR scan — wait up to 5 minutes for results
+                            // -----------------------------------------------
+                            sh """
+                                echo "Initiating ECR image scan for smartfreight/${svc}:${env.GIT_COMMIT_SHA} ..."
+                                aws ecr start-image-scan \
+                                    --repository-name "smartfreight/${svc}" \
+                                    --image-id imageTag=${env.GIT_COMMIT_SHA} \
+                                    --region ${AWS_DEFAULT_REGION} 2>/dev/null || true
+
+                                # Poll until scan is complete (max 10 iterations × 30s = 5 min)
+                                for i in \$(seq 1 10); do
+                                    STATUS=\$(aws ecr describe-image-scan-findings \
+                                        --repository-name "smartfreight/${svc}" \
+                                        --image-id imageTag=${env.GIT_COMMIT_SHA} \
+                                        --region ${AWS_DEFAULT_REGION} \
+                                        --query 'imageScanStatus.status' \
+                                        --output text 2>/dev/null || echo "PENDING")
+                                    echo "ECR scan status (attempt \$i): \$STATUS"
+                                    if [ "\$STATUS" = "COMPLETE" ]; then break; fi
+                                    sleep 30
+                                done
+
+                                # Extract critical finding count
+                                CRITICAL_COUNT=\$(aws ecr describe-image-scan-findings \
+                                    --repository-name "smartfreight/${svc}" \
+                                    --image-id imageTag=${env.GIT_COMMIT_SHA} \
+                                    --region ${AWS_DEFAULT_REGION} \
+                                    --query 'imageScanFindings.findingSeverityCounts.CRITICAL' \
+                                    --output text 2>/dev/null || echo "0")
+                                CRITICAL_COUNT=\${CRITICAL_COUNT:-0}
+                                echo "ECR CRITICAL vulnerabilities: \$CRITICAL_COUNT"
+
+                                if [ "\$CRITICAL_COUNT" -gt 0 ] 2>/dev/null; then
+                                    echo "ERROR: ECR scan found \$CRITICAL_COUNT CRITICAL vulnerability(ies) in smartfreight/${svc}"
+                                    exit 1
+                                fi
+                            """
+
+                            // -----------------------------------------------
+                            // Trivy scan — exit-code 1 on CRITICAL
+                            // -----------------------------------------------
+                            sh """
+                                trivy image \
+                                    --exit-code 1 \
+                                    --severity CRITICAL \
+                                    --no-progress \
+                                    --format table \
+                                    --ignore-unfixed \
+                                    --timeout 10m \
+                                    "${svcImageUri}"
+                            """
+
+                            // Archive Trivy JSON report for auditing
+                            sh """
+                                trivy image \
+                                    --exit-code 0 \
+                                    --severity HIGH,CRITICAL \
+                                    --no-progress \
+                                    --format json \
+                                    --output "trivy-report-${svc}.json" \
+                                    "${svcImageUri}" || true
+                            """
+                        }
+                    }
+
+                    archiveArtifacts artifacts: 'trivy-report-*.json', allowEmptyArchive: true
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 8 — Publish Artifacts
+        // Update deploy/image-tag.json with the new image URI.
+        // =====================================================================
+        stage('Publish Artifacts') {
+            when {
+                expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+            }
+            steps {
+                script {
+                    echo "=== Stage 8: Publish Artifacts ==="
+
+                    def services = env.DETECTED_SERVICE == 'all'
+                        ? [
+                            'shipment-service',
+                            'carrier-service',
+                            'invoice-service',
+                            'document-service',
+                            'notification-service',
+                            'analytics-service'
+                          ]
+                        : [env.DETECTED_SERVICE]
+
+                    // Read existing image-tag.json (or initialise to empty object)
+                    def imageTagFile = "${WORKSPACE}/deploy/image-tag.json"
+                    sh "mkdir -p ${WORKSPACE}/deploy"
+
+                    def existingJson = fileExists(imageTagFile)
+                        ? readFile(imageTagFile).trim()
+                        : '{}'
+
+                    def imageTagMap = new groovy.json.JsonSlurperClassic().parseText(existingJson)
+
+                    def buildTimestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
+
+                    for (svc in services) {
+                        imageTagMap[svc] = [
+                            imageUri  : "${env.ECR_REGISTRY}/smartfreight/${svc}:${env.GIT_COMMIT_SHA}",
+                            gitSha    : env.GIT_COMMIT_SHA,
+                            environment: params.ENVIRONMENT,
+                            builtAt   : buildTimestamp,
+                            buildNumber: env.BUILD_NUMBER
+                        ]
+                    }
+
+                    def updatedJson = groovy.json.JsonOutput.prettyPrint(
+                        groovy.json.JsonOutput.toJson(imageTagMap)
+                    )
+                    writeFile file: imageTagFile, text: updatedJson
+                    echo "Updated ${imageTagFile}:\n${updatedJson}"
+
+                    archiveArtifacts artifacts: 'deploy/image-tag.json', fingerprint: true
+                }
+            }
+        }
+
+        // =====================================================================
+        // Stage 9 — Trigger Spinnaker
+        // POST to Spinnaker Gate API to kick off the deployment pipeline.
+        // =====================================================================
+        stage('Trigger Spinnaker') {
+            when {
+                allOf {
+                    expression { env.DETECTED_SERVICE && env.DETECTED_SERVICE != '' }
+                    // Only trigger Spinnaker on branches that map to environments
+                    expression { params.GIT_BRANCH in ['main', 'release', 'develop'] }
+                }
+            }
+            steps {
+                script {
+                    echo "=== Stage 9: Trigger Spinnaker ==="
+
+                    def services = env.DETECTED_SERVICE == 'all'
+                        ? [
+                            'shipment-service',
+                            'carrier-service',
+                            'invoice-service',
+                            'document-service',
+                            'notification-service',
+                            'analytics-service'
+                          ]
+                        : [env.DETECTED_SERVICE]
+
+                    timeout(time: 5, unit: 'MINUTES') {
+                        for (svc in services) {
+                            def svcImageUri = "${env.ECR_REGISTRY}/smartfreight/${svc}:${env.GIT_COMMIT_SHA}"
+
+                            def execId = sh(
+                                script: """
+                                    bash ${WORKSPACE}/ci-cd/jenkins/scripts/promote-to-spinnaker.sh \
+                                        "${svc}" \
+                                        "${params.ENVIRONMENT}" \
+                                        "${svcImageUri}" \
+                                        "${params.SPINNAKER_GATE_URL}" \
+                                        "${SPINNAKER_API_TOKEN}"
+                                """,
+                                returnStdout: true
+                            ).trim()
+
+                            echo "Spinnaker pipeline execution ID for ${svc}: ${execId}"
+
+                            if (env.DETECTED_SERVICE != 'all') {
+                                env.PIPELINE_EXEC_ID = execId
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    } // end stages
+
+    // =========================================================================
+    // POST — Notifications and cleanup
+    // =========================================================================
+    post {
+
+        always {
+            script {
+                echo "=== Post: Always — collecting final artifacts ==="
+                // Clean workspace of large binary artifacts but preserve reports
+                cleanWs(
+                    deleteDirs: true,
+                    patterns: [
+                        [pattern: '**/target/classes/**', type: 'INCLUDE'],
+                        [pattern: '**/target/dependency/**', type: 'INCLUDE']
+                    ]
+                )
+            }
+        }
+
+        success {
+            script {
+                echo "=== Post: Success — sending Slack success notification ==="
+
+                def testSummary  = currentBuild.absoluteUrl + 'testReport'
+                def coverageUrl  = currentBuild.absoluteUrl + 'jacoco'
+                def duration     = currentBuild.durationString.replace(' and counting', '')
+                def svc          = env.DETECTED_SERVICE ?: 'unknown'
+                def spinExecId   = env.PIPELINE_EXEC_ID ?: 'N/A'
+
+                def payload = groovy.json.JsonOutput.toJson([
+                    text: "*SmartFreight Build SUCCESS* :white_check_mark:",
+                    attachments: [[
+                        color : 'good',
+                        fields: [
+                            [title: 'Service',          value: svc,                    short: true],
+                            [title: 'Environment',      value: params.ENVIRONMENT,     short: true],
+                            [title: 'Branch',           value: params.GIT_BRANCH,      short: true],
+                            [title: 'Git SHA',          value: env.GIT_COMMIT_SHA,     short: true],
+                            [title: 'Build Duration',   value: duration,               short: true],
+                            [title: 'Spinnaker Exec',   value: spinExecId,             short: true],
+                            [title: 'Test Report',      value: testSummary,            short: false],
+                            [title: 'Coverage Report',  value: coverageUrl,            short: false],
+                            [title: 'Image URI',        value: env.IMAGE_URI ?: 'multiple (all)', short: false]
+                        ]
+                    ]]
+                ])
+
+                sh """
+                    curl -s -X POST \
+                        -H 'Content-Type: application/json' \
+                        -d '${payload.replace("'", "'\\''")}' \
+                        "${SLACK_WEBHOOK_URL}" || true
+                """
+            }
+        }
+
+        failure {
+            script {
+                echo "=== Post: Failure — sending Slack failure notification ==="
+
+                def logsUrl  = currentBuild.absoluteUrl + 'console'
+                def duration = currentBuild.durationString.replace(' and counting', '')
+                def svc      = env.DETECTED_SERVICE ?: 'unknown'
+
+                def payload = groovy.json.JsonOutput.toJson([
+                    text: "*SmartFreight Build FAILED* :x:",
+                    attachments: [[
+                        color : 'danger',
+                        fields: [
+                            [title: 'Service',        value: svc,                    short: true],
+                            [title: 'Environment',    value: params.ENVIRONMENT,     short: true],
+                            [title: 'Branch',         value: params.GIT_BRANCH,      short: true],
+                            [title: 'Git SHA',        value: env.GIT_COMMIT_SHA ?: 'unknown', short: true],
+                            [title: 'Build Duration', value: duration,               short: true],
+                            [title: 'Stage Failed',   value: env.STAGE_NAME ?: 'unknown', short: true],
+                            [title: 'Console Log',    value: logsUrl,                short: false]
+                        ]
+                    ]]
+                ])
+
+                sh """
+                    curl -s -X POST \
+                        -H 'Content-Type: application/json' \
+                        -d '${payload.replace("'", "'\\''")}' \
+                        "${SLACK_WEBHOOK_URL}" || true
+                """
+            }
+        }
+
+        unstable {
+            script {
+                echo "=== Post: Unstable — sending Slack warning notification ==="
+
+                def testUrl  = currentBuild.absoluteUrl + 'testReport'
+                def svc      = env.DETECTED_SERVICE ?: 'unknown'
+
+                def payload = groovy.json.JsonOutput.toJson([
+                    text: "*SmartFreight Build UNSTABLE* :warning:",
+                    attachments: [[
+                        color : 'warning',
+                        fields: [
+                            [title: 'Service',      value: svc,                short: true],
+                            [title: 'Environment',  value: params.ENVIRONMENT, short: true],
+                            [title: 'Reason',       value: 'Test failures or coverage below threshold', short: false],
+                            [title: 'Test Report',  value: testUrl,            short: false]
+                        ]
+                    ]]
+                ])
+
+                sh """
+                    curl -s -X POST \
+                        -H 'Content-Type: application/json' \
+                        -d '${payload.replace("'", "'\\''")}' \
+                        "${SLACK_WEBHOOK_URL}" || true
+                """
+            }
+        }
+
+    } // end post
+
+} // end pipeline

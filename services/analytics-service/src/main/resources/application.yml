@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: analytics-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI:https://cognito-idp.us-east-1.amazonaws.com/local}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:#{null}}
+  sqs:
+    analytics-queue-url: ${ANALYTICS_QUEUE_URL:http://localhost:4566/000000000000/analytics-queue-dev}
+  athena:
+    database: ${ATHENA_DATABASE:smartfreight_analytics}
+    output-location: ${ATHENA_OUTPUT_LOCATION:s3://smartfreight-reports-dev/athena-results/}
+
+resilience4j:
+  retry:
+    instances:
+      glue-api:
+        max-attempts: 3
+        wait-duration: 2s
+        retry-exceptions:
+          - software.amazon.awssdk.core.exception.SdkException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+logging:
+  level:
+    root: INFO
+    com.smartfreight: DEBUG

@@ -1,0 +1,32 @@
+{
+  "shipment-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  },
+  "carrier-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  },
+  "invoice-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  },
+  "document-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  },
+  "notification-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  },
+  "analytics-service": {
+    "dev":  { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "test": { "imageUri": "", "imageTag": "", "promotedAt": "" },
+    "prod": { "imageUri": "", "imageTag": "", "promotedAt": "" }
+  }
+}

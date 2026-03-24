@@ -1,0 +1,174 @@
+# =============================================================================
+# SmartFreight — Spinnaker Pipeline: analytics-service
+# =============================================================================
+application: smartfreight
+name: analytics-service-deploy
+description: Blue/Green ECS deployment pipeline for analytics-service (dev → test → prod).
+
+triggers:
+  - type: jenkins
+    enabled: true
+    master: smartfreight-jenkins
+    job: smartfreight-ci/analytics-service
+    propertyFile: deploy/image-tag.json
+
+parameterConfig:
+  - name: imageUri
+    label: Docker Image URI
+    required: true
+    default: ""
+  - name: gitSha
+    label: Git SHA
+    required: false
+    default: ""
+
+notifications:
+  - type: slack
+    address: "#deployments"
+    when:
+      - pipeline.starting
+      - pipeline.complete
+      - pipeline.failed
+
+stages:
+
+  - name: Bake Task Definition
+    refId: "1"
+    requisiteStageRefIds: []
+    type: bakeManifest
+    templateRenderer: SPEL
+    outputName: analytics-service-task-def
+    inputArtifacts:
+      - account: smartfreight-ecr
+        artifact:
+          type: docker/image
+          name: smartfreight/analytics-service
+          reference: "${ parameters.imageUri }"
+    overrides:
+      image: "${ parameters.imageUri }"
+
+  - name: Deploy to Dev
+    refId: "2"
+    requisiteStageRefIds: ["1"]
+    type: deployService
+    account: smartfreight-ecs-dev
+    cloudProvider: ecs
+    region: us-east-1
+    stack: dev
+    freeFormDetails: analytics-service
+    capacity: {desired: 1, min: 1, max: 2}
+    deploymentStrategy:
+      type: redblack
+      rollback: {onFailure: true}
+    ecsCluster: smartfreight-dev
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-dev
+        targetGroup: analytics-service-dev-tg
+        containerName: analytics-service
+        containerPort: 8085
+
+  - name: "Promote to Test?"
+    refId: "3"
+    requisiteStageRefIds: ["2"]
+    type: manualJudgment
+    instructions: |
+      **analytics-service** deployed to **dev** ✅
+      Image: `${ parameters.imageUri }`
+      Approve to promote to **test**.
+    judgmentInputs:
+      - value: "Approve"
+      - value: "Reject"
+    notifications:
+      - type: slack
+        address: "#deployments"
+        message: "⏳ Awaiting approval to promote analytics-service to test"
+        when: [manualJudgment]
+
+  - name: Deploy to Test
+    refId: "4"
+    requisiteStageRefIds: ["3"]
+    type: deployService
+    account: smartfreight-ecs-test
+    cloudProvider: ecs
+    region: us-east-1
+    stack: test
+    freeFormDetails: analytics-service
+    capacity: {desired: 1, min: 1, max: 3}
+    deploymentStrategy:
+      type: redblack
+      rollback: {onFailure: true}
+    ecsCluster: smartfreight-test
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-test
+        targetGroup: analytics-service-test-tg
+        containerName: analytics-service
+        containerPort: 8085
+    stageEnabled:
+      type: expression
+      expression: "${ #judgment('Promote to Test?') == 'Approve' }"
+
+  - name: Integration Tests
+    refId: "5"
+    requisiteStageRefIds: ["4"]
+    type: jenkins
+    master: smartfreight-jenkins
+    job: smartfreight-integration-tests/analytics-service
+    parameters:
+      ENVIRONMENT: test
+      IMAGE_URI: "${ parameters.imageUri }"
+    waitForCompletion: true
+
+  - name: "Promote to Production?"
+    refId: "6"
+    requisiteStageRefIds: ["5"]
+    type: manualJudgment
+    instructions: |
+      **analytics-service** passed integration tests in **test** ✅
+      Image: `${ parameters.imageUri }`
+      Approve to deploy to **production**.
+    judgmentInputs:
+      - value: "Approve"
+      - value: "Reject"
+    notifications:
+      - type: slack
+        address: "#deployments-prod"
+        message: "⏳ Awaiting approval to promote analytics-service to PRODUCTION"
+        when: [manualJudgment]
+
+  - name: Deploy to Production
+    refId: "7"
+    requisiteStageRefIds: ["6"]
+    type: deployService
+    account: smartfreight-ecs-prod
+    cloudProvider: ecs
+    region: us-east-1
+    stack: prod
+    freeFormDetails: analytics-service
+    capacity: {desired: 2, min: 2, max: 6}
+    deploymentStrategy:
+      type: redblack
+      rollback: {onFailure: true}
+    ecsCluster: smartfreight-prod
+    taskDefinitionArtifact:
+      account: embedded-artifact
+      artifact:
+        type: ecs/taskDefinition
+        reference: "${ #stage('Bake Task Definition').context.artifacts[0] }"
+    loadBalancers:
+      - name: smartfreight-internal-prod
+        targetGroup: analytics-service-prod-tg
+        containerName: analytics-service
+        containerPort: 8085
+    stageEnabled:
+      type: expression
+      expression: "${ #judgment('Promote to Production?') == 'Approve' }"

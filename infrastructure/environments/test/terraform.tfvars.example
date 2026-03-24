@@ -1,0 +1,12 @@
+# Copy this file to terraform.tfvars and fill in values.
+# terraform.tfvars is gitignored — never commit real values.
+
+environment = "test"
+aws_region  = "us-east-1"
+vpc_cidr    = "10.20.0.0/16"
+
+cognito_callback_urls = [
+  "https://test.smartfreight.internal/callback"
+]
+cognito_domain_prefix = "smartfreight-test"
+certificate_arn       = ""

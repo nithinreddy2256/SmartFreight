@@ -1,0 +1,15 @@
+# Copy this file to terraform.tfvars and fill in values.
+# terraform.tfvars is gitignored — never commit real values.
+
+environment = "prod"
+aws_region  = "us-east-1"
+vpc_cidr    = "10.30.0.0/16"
+
+cognito_callback_urls = [
+  "https://app.smartfreight.com/callback"
+]
+cognito_domain_prefix = "smartfreight-prod"
+certificate_arn       = "arn:aws:acm:us-east-1:<CERT_ID>"
+
+aurora_instance_class = "db.r6g.large"
+aurora_instance_count = 2

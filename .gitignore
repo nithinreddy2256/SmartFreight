@@ -1,0 +1,52 @@
+# ============================================================
+# Terraform
+# ============================================================
+# tfvars hold environment-specific config — never commit them.
+# Commit *.tfvars.example files as templates instead.
+*.tfvars
+*.tfvars.json
+
+# Terraform state — always stored remotely (S3 + DynamoDB lock)
+*.tfstate
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+
+# Terraform plan output — may contain sensitive values
+*.tfplan
+
+# ============================================================
+# AWS credentials — NEVER commit
+# ============================================================
+.aws/
+credentials
+*.pem
+*.key
+
+# ============================================================
+# Java / Maven
+# ============================================================
+target/
+*.class
+*.jar
+*.war
+
+# ============================================================
+# IDE
+# ============================================================
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# ============================================================
+# Docker
+# ============================================================
+.docker/
+
+# ============================================================
+# Environment files
+# ============================================================
+.env
+.env.*
+!.env.example

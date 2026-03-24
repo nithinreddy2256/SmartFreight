@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: document-service
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${COGNITO_ISSUER_URI:https://cognito-idp.us-east-1.amazonaws.com/local}
+
+aws:
+  region: ${AWS_REGION:us-east-1}
+  endpoint-url: ${AWS_ENDPOINT_URL:#{null}}
+  s3:
+    documents-bucket-name: ${DOCUMENTS_BUCKET:smartfreight-documents-dev}
+  dynamodb:
+    document-index-table-name: ${DOCUMENT_INDEX_TABLE:DocumentIndexTable-dev}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+
+logging:
+  level:
+    root: INFO
+    com.smartfreight: DEBUG

@@ -102,8 +102,9 @@
         <maven-checkstyle.version>3.3.1</maven-checkstyle.version>
         <spotbugs-maven.version>4.8.3.1</spotbugs-maven.version>
 
-        <!-- Container registry — overridden per environment in CI -->
-        <ecr.registry>YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com</ecr.registry>
+        <!-- Container registry — injected by CI via -Decr.registry=$ECR_REGISTRY -->
+        <!-- Never hardcode account IDs here; the value comes from the CI environment -->
+        <ecr.registry>${env.ECR_REGISTRY}</ecr.registry>
         <deploy.env>dev</deploy.env>
     </properties>
 
