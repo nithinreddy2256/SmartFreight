@@ -55,7 +55,9 @@ public class InvoiceController {
         } else {
             invoicePage = invoiceService.listAll(pageable).map(InvoiceDto::from);
         }
-        return ApiResponse.ok(PagedResponse.from(invoicePage), cid());
+        return ApiResponse.ok(PagedResponse.from(invoicePage.getContent(), invoicePage.getNumber(), invoicePage.getSize(),
+                                 invoicePage.getTotalElements(), invoicePage.getTotalPages(),
+                                 invoicePage.isFirst(), invoicePage.isLast()), cid());
     }
 
     @GetMapping("/shipment/{shipmentId}")

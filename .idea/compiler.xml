@@ -7,15 +7,23 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+      </profile>
+      <profile name="Annotation profile for SmartFreight Parent POM" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <processorPath useClasspath="false">
+          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.30/lombok-1.18.30.jar" />
+        </processorPath>
+        <module name="carrier-service" />
+        <module name="invoice-service" />
         <module name="smartfreight-observability" />
         <module name="smartfreight-common" />
+        <module name="analytics-service" />
+        <module name="shipment-service" />
         <module name="smartfreight-aws-starter" />
         <module name="notification-service" />
         <module name="document-service" />
-        <module name="carrier-service" />
-        <module name="invoice-service" />
-        <module name="analytics-service" />
-        <module name="shipment-service" />
       </profile>
     </annotationProcessing>
     <bytecodeTargetLevel>

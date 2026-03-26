@@ -36,11 +36,7 @@
         <module>services/notification-service</module>
         <module>services/analytics-service</module>
 
-        <!-- Lambda functions (lightweight, no Spring Boot app context) -->
-        <module>lambdas/carrier-webhook-handler</module>
-        <module>lambdas/s3-document-processor</module>
-        <module>lambdas/invoice-ocr-trigger</module>
-        <module>lambdas/carrier-rate-refresh</module>
+        <!-- Lambda functions are Python-based and not Maven modules -->
     </modules>
 
     <!-- ===================================================================
@@ -102,10 +98,8 @@
         <maven-checkstyle.version>3.3.1</maven-checkstyle.version>
         <spotbugs-maven.version>4.8.3.1</spotbugs-maven.version>
 
-        <!-- Container registry — injected by CI via -Decr.registry=$ECR_REGISTRY -->
-        <!-- Never hardcode account IDs here; the value comes from the CI environment -->
-        <ecr.registry>${env.ECR_REGISTRY}</ecr.registry>
-        <deploy.env>dev</deploy.env>
+        <!-- Lombok -->
+        <lombok.version>1.18.30</lombok.version>
     </properties>
 
     <!-- ===================================================================

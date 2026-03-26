@@ -37,6 +37,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class SnsPublisher {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SnsPublisher.class);
+
     private final SnsClient snsClient;
     private final ObjectMapper objectMapper;
 

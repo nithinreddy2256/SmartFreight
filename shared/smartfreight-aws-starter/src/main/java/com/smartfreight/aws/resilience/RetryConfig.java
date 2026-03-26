@@ -2,7 +2,6 @@ package com.smartfreight.aws.resilience;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
-import io.github.resilience4j.retry.RetryConfig;
 import io.github.resilience4j.retry.RetryRegistry;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
@@ -41,14 +40,14 @@ public class RetryConfig {
      */
     @Bean
     public RetryRegistry retryRegistry() {
-        var snsRetryConfig = RetryConfig.custom()
+        var snsRetryConfig = io.github.resilience4j.retry.RetryConfig.custom()
                 .maxAttempts(3)
                 .waitDuration(Duration.ofMillis(500))
                 .retryExceptions(SnsException.class, SqsException.class)
                 .ignoreExceptions(SnsPublisherIgnoreException.class)
                 .build();
 
-        return RetryRegistry.of(RetryConfig.custom()
+        return RetryRegistry.of(io.github.resilience4j.retry.RetryConfig.custom()
                 .maxAttempts(3)
                 .waitDuration(Duration.ofSeconds(1))
                 .build());

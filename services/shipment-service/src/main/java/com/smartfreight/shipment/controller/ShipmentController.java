@@ -78,7 +78,9 @@ public class ShipmentController {
                 shipperId, carrierId, status, fromDate, toDate,
                 originCity, destinationCity, pageable);
         return ApiResponse.ok(
-                PagedResponse.from(result),
+                PagedResponse.from(result.getContent(), result.getNumber(), result.getSize(),
+                                 result.getTotalElements(), result.getTotalPages(),
+                                 result.isFirst(), result.isLast()),
                 CorrelationIdFilter.getCurrentCorrelationId());
     }
 

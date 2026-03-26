@@ -70,21 +70,4 @@ public abstract class BaseEvent {
      * older versions gracefully.
      */
     private int schemaVersion;
-
-    /**
-     * Factory method for concrete event subclasses.
-     * Sets eventId, occurredAt, and schemaVersion automatically.
-     */
-    protected static BaseEvent.BaseEventBuilder<?, ?> baseEventDefaults(
-            String source, String correlationId) {
-        return new BaseEvent() {
-            @Override
-            public String getEventType() { return "BaseEvent"; }
-        }.new BaseEventBuilderImpl()
-                .eventId(UUID.randomUUID().toString())
-                .occurredAt(Instant.now())
-                .source(source)
-                .correlationId(correlationId)
-                .schemaVersion(1);
-    }
 }

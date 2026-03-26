@@ -24,15 +24,17 @@ public class PagedResponse<T> {
     private final boolean first;
     private final boolean last;
 
-    public static <T> PagedResponse<T> from(org.springframework.data.domain.Page<T> page) {
+    public static <T> PagedResponse<T> from(List<T> content, int page, int size,
+                                         long totalElements, int totalPages,
+                                         boolean first, boolean last) {
         return PagedResponse.<T>builder()
-                .content(page.getContent())
-                .page(page.getNumber())
-                .size(page.getSize())
-                .totalElements(page.getTotalElements())
-                .totalPages(page.getTotalPages())
-                .first(page.isFirst())
-                .last(page.isLast())
+                .content(content)
+                .page(page)
+                .size(size)
+                .totalElements(totalElements)
+                .totalPages(totalPages)
+                .first(first)
+                .last(last)
                 .build();
     }
 }
