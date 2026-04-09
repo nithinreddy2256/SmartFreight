@@ -30,12 +30,12 @@ locals {
   lambda_image_tag = "latest"
 
   microservices = {
-    shipment-orchestrator = { port = 8080 }
-    carrier-integration   = { port = 8081 }
-    invoice-processing    = { port = 8082 }
-    notification          = { port = 8083 }
-    document-management   = { port = 8084 }
-    analytics             = { port = 8085 }
+    shipment-service     = { port = 8080 }
+    carrier-service      = { port = 8081 }
+    invoice-service      = { port = 8082 }
+    document-service     = { port = 8083 }
+    notification-service = { port = 8084 }
+    analytics-service    = { port = 8085 }
   }
 }
 
@@ -544,6 +544,45 @@ module "lambda_carrier_webhook_handler" {
   ]
 
   depends_on = [module.kms, module.sns_shipment_events]
+}
+
+# ============================================================
+# Glue ETL Jobs
+# ============================================================
+module "glue_freight_spend_aggregator" {
+  source = "../../modules/glue-job"
+
+  job_name             = "freight-spend-aggregator"
+  environment          = local.env
+  script_s3_location   = "s3://${module.s3_etl_raw.bucket_name}/glue-scripts/freight_spend_aggregator.py"
+  kms_key_arn          = module.kms.key_arn
+  aurora_connection_string = "jdbc:postgresql://${module.aurora_invoice_db.cluster_endpoint}:5432/invoice_db"
+  aurora_username      = var.aurora_glue_username
+  aurora_password      = var.aurora_glue_password
+  subnet_id            = module.vpc.private_subnet_ids[0]
+  security_group_id    = module.ecs_service["invoice-service"].security_group_id
+  availability_zone    = "${var.aws_region}a"
+  s3_temp_bucket       = module.s3_etl_processed.bucket_name
+
+  depends_on = [module.kms, module.aurora_invoice_db, module.s3_etl_raw, module.s3_etl_processed]
+}
+
+module "glue_carrier_performance_etl" {
+  source = "../../modules/glue-job"
+
+  job_name             = "carrier-performance-etl"
+  environment          = local.env
+  script_s3_location   = "s3://${module.s3_etl_raw.bucket_name}/glue-scripts/carrier_performance_etl.py"
+  kms_key_arn          = module.kms.key_arn
+  aurora_connection_string = "jdbc:postgresql://${module.aurora_shipment_db.cluster_endpoint}:5432/shipment_db"
+  aurora_username      = var.aurora_glue_username
+  aurora_password      = var.aurora_glue_password
+  subnet_id            = module.vpc.private_subnet_ids[0]
+  security_group_id    = module.ecs_service["shipment-service"].security_group_id
+  availability_zone    = "${var.aws_region}a"
+  s3_temp_bucket       = module.s3_etl_processed.bucket_name
+
+  depends_on = [module.kms, module.aurora_shipment_db, module.s3_etl_raw, module.s3_etl_processed]
 }
 
 # ============================================================

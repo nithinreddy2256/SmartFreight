@@ -33,3 +33,15 @@ variable "certificate_arn" {
   type        = string
   default     = ""
 }
+
+variable "aurora_glue_username" {
+  description = "Aurora username for Glue JDBC connections — sourced from Secrets Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "aurora_glue_password" {
+  description = "Aurora password for Glue JDBC connections — sourced from Secrets Manager"
+  type        = string
+  sensitive   = true
+}

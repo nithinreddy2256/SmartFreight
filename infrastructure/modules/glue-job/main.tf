@@ -134,8 +134,8 @@ resource "aws_glue_connection" "aurora" {
 
   connection_properties = {
     JDBC_CONNECTION_URL = var.aurora_connection_string
-    USERNAME            = "placeholder"
-    PASSWORD            = "placeholder"
+    USERNAME            = var.aurora_username
+    PASSWORD            = var.aurora_password
   }
 
   physical_connection_requirements {

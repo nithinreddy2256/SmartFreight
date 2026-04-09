@@ -44,3 +44,15 @@ variable "aurora_instance_count" {
   type        = number
   default     = 2
 }
+
+variable "aurora_glue_username" {
+  description = "Aurora username for Glue JDBC connections — sourced from Secrets Manager"
+  type        = string
+  sensitive   = true
+}
+
+variable "aurora_glue_password" {
+  description = "Aurora password for Glue JDBC connections — sourced from Secrets Manager"
+  type        = string
+  sensitive   = true
+}

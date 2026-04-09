@@ -19,6 +19,20 @@ variable "aurora_connection_string" {
   default     = ""
 }
 
+variable "aurora_username" {
+  description = "Aurora PostgreSQL username, sourced from Secrets Manager"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "aurora_password" {
+  description = "Aurora PostgreSQL password, sourced from Secrets Manager"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
 variable "max_capacity" {
   description = "The maximum number of AWS Glue data processing units (DPUs) allocated for this job"
   type        = number

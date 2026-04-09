@@ -48,29 +48,41 @@ public class AnalyticsController {
     public ApiResponse<List<Map<String, String>>> freightSpendReport(
             @RequestParam(defaultValue = "30") int days,
             @RequestParam(required = false) String carrierId) {
+        if (days < 1 || days > 365) {
+            throw new IllegalArgumentException("days must be between 1 and 365");
+        }
         String sql = carrierId != null
-                ? "SELECT carrier_id, carrier_name, gl_code, SUM(approved_amount) AS total_spend, COUNT(*) AS invoice_count " +
+                ? String.format(
+                  "SELECT carrier_id, carrier_name, gl_code, SUM(approved_amount) AS total_spend, COUNT(*) AS invoice_count " +
                   "FROM freight_spend_aggregated " +
-                  "WHERE carrier_id = '" + carrierId + "' " +
-                  "AND invoice_date >= current_date - interval '" + days + "' day " +
-                  "GROUP BY carrier_id, carrier_name, gl_code ORDER BY total_spend DESC"
-                : "SELECT carrier_id, carrier_name, SUM(approved_amount) AS total_spend, COUNT(*) AS invoice_count " +
+                  "WHERE carrier_id = '%s' " +
+                  "AND invoice_date >= current_date - interval '%d' day " +
+                  "GROUP BY carrier_id, carrier_name, gl_code ORDER BY total_spend DESC",
+                  carrierId.replaceAll("[^a-zA-Z0-9_-]", ""), days)
+                : String.format(
+                  "SELECT carrier_id, carrier_name, SUM(approved_amount) AS total_spend, COUNT(*) AS invoice_count " +
                   "FROM freight_spend_aggregated " +
-                  "WHERE invoice_date >= current_date - interval '" + days + "' day " +
-                  "GROUP BY carrier_id, carrier_name ORDER BY total_spend DESC";
+                  "WHERE invoice_date >= current_date - interval '%d' day " +
+                  "GROUP BY carrier_id, carrier_name ORDER BY total_spend DESC",
+                  days);
         return ApiResponse.ok(athenaQueryService.executeQuery(sql), cid());
     }
 
     @GetMapping("/reports/carrier-performance")
     public ApiResponse<List<Map<String, String>>> carrierPerformanceReport(
             @RequestParam(defaultValue = "30") int days) {
-        String sql = "SELECT carrier_id, carrier_name, " +
+        if (days < 1 || days > 365) {
+            throw new IllegalArgumentException("days must be between 1 and 365");
+        }
+        String sql = String.format(
+                "SELECT carrier_id, carrier_name, " +
                 "ROUND(AVG(CASE WHEN on_time THEN 1.0 ELSE 0.0 END) * 100, 1) AS on_time_rate_pct, " +
                 "COUNT(*) AS total_shipments, " +
                 "ROUND(AVG(total_weight_lbs), 0) AS avg_weight_lbs " +
                 "FROM carrier_performance_metrics " +
-                "WHERE delivered_at >= current_date - interval '" + days + "' day " +
-                "GROUP BY carrier_id, carrier_name ORDER BY on_time_rate_pct DESC";
+                "WHERE delivered_at >= current_date - interval '%d' day " +
+                "GROUP BY carrier_id, carrier_name ORDER BY on_time_rate_pct DESC",
+                days);
         return ApiResponse.ok(athenaQueryService.executeQuery(sql), cid());
     }
 

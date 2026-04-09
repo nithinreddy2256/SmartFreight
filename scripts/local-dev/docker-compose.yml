@@ -17,7 +17,7 @@ version: "3.9"
 # Services are accessible at:
 #   PostgreSQL:  localhost:5432
 #   LocalStack:  localhost:4566  (all AWS APIs)
-#   LocalStack UI: http://localhost:8080
+#   LocalStack UI: http://localhost:8090
 # ============================================================================
 
 services:
@@ -58,7 +58,7 @@ services:
     restart: unless-stopped
     ports:
       - "4566:4566"       # Main LocalStack port (all services)
-      - "8080:8080"       # LocalStack Web UI
+      - "8090:8080"       # LocalStack Web UI
     environment:
       # Services to start (others are lazy-loaded on first request)
       SERVICES: s3,sqs,sns,dynamodb,ses,secretsmanager,iam,cloudwatch

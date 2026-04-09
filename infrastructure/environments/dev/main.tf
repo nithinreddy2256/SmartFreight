@@ -32,22 +32,22 @@ locals {
 
   # Service definitions
   microservices = {
-    shipment-orchestrator = {
+    shipment-service = {
       port = 8080
     }
-    carrier-integration = {
+    carrier-service = {
       port = 8081
     }
-    invoice-processing = {
+    invoice-service = {
       port = 8082
     }
-    notification = {
+    document-service = {
       port = 8083
     }
-    document-management = {
+    notification-service = {
       port = 8084
     }
-    analytics = {
+    analytics-service = {
       port = 8085
     }
   }
@@ -170,7 +170,7 @@ module "aurora_shipment_db" {
   kms_key_arn         = module.kms.key_arn
 
   allowed_security_group_ids = [
-    for svc in ["shipment-orchestrator", "carrier-integration"] :
+    for svc in ["shipment-service", "carrier-service"] :
     module.ecs_service[svc].security_group_id
   ]
 
@@ -192,7 +192,7 @@ module "aurora_invoice_db" {
   kms_key_arn         = module.kms.key_arn
 
   allowed_security_group_ids = [
-    module.ecs_service["invoice-processing"].security_group_id
+    module.ecs_service["invoice-service"].security_group_id
   ]
 
   depends_on = [module.vpc, module.kms]
@@ -595,6 +595,45 @@ module "lambda_carrier_webhook_handler" {
 }
 
 # ============================================================
+# Glue ETL Jobs
+# ============================================================
+module "glue_freight_spend_aggregator" {
+  source = "../../modules/glue-job"
+
+  job_name             = "freight-spend-aggregator"
+  environment          = local.env
+  script_s3_location   = "s3://${module.s3_etl_raw.bucket_name}/glue-scripts/freight_spend_aggregator.py"
+  kms_key_arn          = module.kms.key_arn
+  aurora_connection_string = "jdbc:postgresql://${module.aurora_invoice_db.cluster_endpoint}:5432/invoice_db"
+  aurora_username      = var.aurora_glue_username
+  aurora_password      = var.aurora_glue_password
+  subnet_id            = module.vpc.private_subnet_ids[0]
+  security_group_id    = module.ecs_service["invoice-service"].security_group_id
+  availability_zone    = "${var.aws_region}a"
+  s3_temp_bucket       = module.s3_etl_processed.bucket_name
+
+  depends_on = [module.kms, module.aurora_invoice_db, module.s3_etl_raw, module.s3_etl_processed]
+}
+
+module "glue_carrier_performance_etl" {
+  source = "../../modules/glue-job"
+
+  job_name             = "carrier-performance-etl"
+  environment          = local.env
+  script_s3_location   = "s3://${module.s3_etl_raw.bucket_name}/glue-scripts/carrier_performance_etl.py"
+  kms_key_arn          = module.kms.key_arn
+  aurora_connection_string = "jdbc:postgresql://${module.aurora_shipment_db.cluster_endpoint}:5432/shipment_db"
+  aurora_username      = var.aurora_glue_username
+  aurora_password      = var.aurora_glue_password
+  subnet_id            = module.vpc.private_subnet_ids[0]
+  security_group_id    = module.ecs_service["shipment-service"].security_group_id
+  availability_zone    = "${var.aws_region}a"
+  s3_temp_bucket       = module.s3_etl_processed.bucket_name
+
+  depends_on = [module.kms, module.aurora_shipment_db, module.s3_etl_raw, module.s3_etl_processed]
+}
+
+# ============================================================
 # CloudWatch Monitoring
 # ============================================================
 module "cloudwatch" {
@@ -627,7 +666,7 @@ module "cloudwatch" {
   log_metric_filters = [
     {
       name             = "shipment-errors"
-      log_group_name   = "/ecs/smartfreight-${local.env}/shipment-orchestrator"
+      log_group_name   = "/ecs/smartfreight-${local.env}/shipment-service"
       filter_pattern   = "[timestamp, requestId, level=ERROR*, ...]"
       metric_name      = "ShipmentServiceErrors"
       metric_namespace = "SmartFreight/${local.env}"
@@ -635,7 +674,7 @@ module "cloudwatch" {
     },
     {
       name             = "invoice-errors"
-      log_group_name   = "/ecs/smartfreight-${local.env}/invoice-processing"
+      log_group_name   = "/ecs/smartfreight-${local.env}/invoice-service"
       filter_pattern   = "[timestamp, requestId, level=ERROR*, ...]"
       metric_name      = "InvoiceServiceErrors"
       metric_namespace = "SmartFreight/${local.env}"
